@@ -9,6 +9,7 @@ import Test.QuickCheck
 import Test.HUnit
 import Control.Applicative ((<$>))
 import Control.Monad
+import Control.Exception
 
 import qualified Data.ByteString as B
 
@@ -113,12 +114,23 @@ unpackDataStream (DataStream atoms) bs = DataStream $ runUnpacking (mapM process
           process (W32BE _) = W32BE <$> getWord32BE
           process (W64BE _) = W64BE <$> getWord64BE
           process (Bytes b) = Bytes <$> getBytes (B.length b)
-    
+
+assertException msg filterE act =
+    handleJust filterE (\_ -> return ()) (evaluate act >> assertFailure (msg ++ " didn't raise the proper exception"))
+
 main :: IO ()
 main = defaultMain
     [ testGroup "serialization"
         [ testGroup "basic cases"
-            [ testCase "pack 4 bytes" (runPacking 4 (mapM_ putWord8 [1,2,3,4]) @=? B.pack [1,2,3,4])
+            [ testCase "packing 4 bytes" (runPacking 4 (mapM_ putWord8 [1,2,3,4]) @=? B.pack [1,2,3,4])
+            , testCase "packing out of bounds" (assertException "packing" (\(OutOfBoundPacking _ _) -> Just ())
+                                                    (runPacking 1 (mapM_ putWord8 [1,2])))
+            , testCase "unpacking out of bounds" (assertException "unpacking" (\(OutOfBoundUnpacking _ _) -> Just ())
+                                                    (runUnpacking (mapM_ (\_ -> getWord8 >> return ()) [1,2]) (B.singleton 1)))
+            , testCase "unpacking set pos before" (assertException "unpacking position" (\(OutOfBoundUnpacking _ _) -> Just ())
+                                                    (runUnpacking (unpackSetPosition 2) (B.singleton 1)))
+            , testCase "unpacking set pos after" (assertException "unpacking position" (\(OutOfBoundUnpacking _ _) -> Just ())
+                                                    (runUnpacking (unpackSetPosition (-1)) (B.singleton 1)))
             ]
         , testGroup "endianness cases" $ concatMap toEndianCase endiannessCases
         , testProperty "unpacking.packing=id" (\ds -> unpackDataStream ds (packDataStream ds) == ds)
