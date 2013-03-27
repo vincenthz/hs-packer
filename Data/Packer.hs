@@ -21,6 +21,7 @@ module Data.Packer
     , Hole
     -- * Main methods
     , runUnpacking
+    , tryUnpacking
     , runPacking
     -- * Unpacking functions
     , unpackSkip
@@ -77,6 +78,7 @@ import qualified Data.ByteString.Internal as B (memcpy, unsafeCreate, toForeignP
 import Data.Word
 import Foreign.Storable
 import System.IO.Unsafe
+import qualified Control.Exception as E
 
 #if __GLASGOW_HASKELL__ > 704
 unsafeDoIO = unsafeDupablePerformIO
@@ -292,6 +294,10 @@ putStorable a = packCheckAct (sizeOf a) (\ptr -> poke (castPtr ptr) a)
 -- | Unpack a bytestring using a monadic unpack action.
 runUnpacking :: Unpacking a -> ByteString -> a
 runUnpacking action bs = unsafeDoIO $ runUnpackingIO bs action
+
+-- | Similar to 'runUnpacking' but returns an Either type with an exception type in case of failure.
+tryUnpacking :: Unpacking a -> ByteString -> Either E.SomeException a
+tryUnpacking action bs = unsafeDoIO $ tryUnpackingIO bs action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
 runPacking :: Int -> Packing () -> ByteString
