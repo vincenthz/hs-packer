@@ -44,6 +44,7 @@ module Data.Packer
     , getRemainingCopy
     , getStorable
     -- * Packing functions
+    , packGetPosition
     , putWord8
     , putWord16
     , putWord16LE

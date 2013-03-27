@@ -30,6 +30,7 @@ module Data.Packer.Internal
     , unpackGetNbRemaining
     , packCheckAct
     , packHole
+    , packGetPosition
     , fillHole
     ) where
 
@@ -49,7 +50,7 @@ data Memory = Memory {-# UNPACK #-} !(Ptr Word8)
 data UnpackSt = UnpackSt !(ForeignPtr Word8) !Memory {-# UNPACK #-} !Memory
 
 -- | Packing state
-data PackSt = PackSt !Int !Memory
+data PackSt = PackSt (Ptr Word8) !Int !Memory
 
 -- | Packing monad
 newtype Packing a = Packing { runPacking_ :: StateT PackSt IO a }
@@ -131,17 +132,21 @@ unpackLookahead f = Unpacking $ do
 
 withPackMemory :: Int -> (Ptr Word8 -> IO a) -> StateT PackSt IO a
 withPackMemory n act = do
-    (PackSt holes (Memory ptr sz)) <- get
+    (PackSt iPos holes (Memory ptr sz)) <- get
     when (sz < n) (lift $ throw $ OutOfBoundPacking sz n)
     r <- lift (act ptr)
-    put $ PackSt holes (Memory (ptr `plusPtr` n) (sz - n))
+    put $ PackSt iPos holes (Memory (ptr `plusPtr` n) (sz - n))
     return r
 
 modifyHoles :: (Int -> Int) -> Packing ()
-modifyHoles f = Packing $ modify (\(PackSt holes mem) -> PackSt (f holes) mem)
+modifyHoles f = Packing $ modify (\(PackSt iPos holes mem) -> PackSt iPos (f holes) mem)
 
 packCheckAct :: Int -> (Ptr Word8 -> IO a) -> Packing a
 packCheckAct n act = Packing (withPackMemory n act)
+
+-- | Get the position in the memory block.
+packGetPosition :: Packing Int
+packGetPosition = Packing $ gets (\(PackSt iniPtr _ (Memory ptr _)) -> ptr `minusPtr` iniPtr)
 
 -- | A Hole represent something that need to be filled
 -- later, for example a CRC, a prefixed size, etc.

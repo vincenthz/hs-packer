@@ -30,7 +30,7 @@ runPackingAt :: Ptr Word8  -- ^ Pointer to the beginning of the memory
              -> Packing () -- ^ Packing action
              -> IO Int     -- ^ Number of bytes filled
 runPackingAt ptr sz action = do
-    (PackSt holes (Memory _ leftSz)) <- execStateT (runPacking_ action) (PackSt 0 $ Memory ptr sz)
+    (PackSt _ holes (Memory _ leftSz)) <- execStateT (runPacking_ action) (PackSt ptr 0 $ Memory ptr sz)
     when (holes > 0) (throwIO $ HoleInPacking holes)
     return $ sz - leftSz
 
