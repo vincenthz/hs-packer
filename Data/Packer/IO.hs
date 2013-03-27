@@ -8,6 +8,7 @@
 module Data.Packer.IO
     ( runPackingIO
     , runUnpackingIO
+    , tryUnpackingIO
     ) where
 
 import Data.Packer.Internal
@@ -15,11 +16,16 @@ import Data.Packer.Unsafe
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Internal as B (ByteString(..), mallocByteString, toForeignPtr)
 import Foreign.ForeignPtr
+import qualified Control.Exception as E
 
 -- | Unpack a bytestring using a monadic unpack action in the IO monad.
 runUnpackingIO :: ByteString -> Unpacking a -> IO a
 runUnpackingIO bs action = runUnpackingAt fptr o len action
   where (fptr,o,len) = B.toForeignPtr bs
+
+-- | Similar to 'runUnpackingIO' but catch exception and return an Either type.
+tryUnpackingIO :: ByteString -> Unpacking a -> IO (Either E.SomeException a)
+tryUnpackingIO bs action = E.try $ runUnpackingIO bs action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
 runPackingIO :: Int -> Packing () -> IO ByteString
