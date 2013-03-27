@@ -10,6 +10,7 @@
 -- This is a tradeoff between a more pure / builder (binary, cereal, builder)
 -- and direct access to Storable or pointer manipulation
 --
+{-# LANGUAGE CPP #-}
 module Data.Packer
     (
     -- * Types
@@ -75,7 +76,13 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B (memcpy, unsafeCreate, toForeignPtr, fromForeignPtr)
 import Data.Word
 import Foreign.Storable
-import System.IO.Unsafe (unsafeDupablePerformIO)
+import System.IO.Unsafe
+
+#if __GLASGOW_HASKELL__ > 704
+unsafeDoIO = unsafeDupablePerformIO
+#else
+unsafeDoIO = unsafePerformIO
+#endif
 
 -- | Peek and do an action on the result. just for convenience
 {-# INLINE peekAnd #-}
@@ -284,8 +291,8 @@ putStorable a = packCheckAct (sizeOf a) (\ptr -> poke (castPtr ptr) a)
 
 -- | Unpack a bytestring using a monadic unpack action.
 runUnpacking :: Unpacking a -> ByteString -> a
-runUnpacking action bs = unsafeDupablePerformIO $ runUnpackingIO bs action
+runUnpacking action bs = unsafeDoIO $ runUnpackingIO bs action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
 runPacking :: Int -> Packing () -> ByteString
-runPacking sz action = unsafeDupablePerformIO $ runPackingIO sz action
+runPacking sz action = unsafeDoIO $ runPackingIO sz action
