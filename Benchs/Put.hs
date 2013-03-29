@@ -39,20 +39,20 @@ main = defaultMain
         , bgroup "256" $ benchAll p256
         , bgroup "1024" $ benchAll p1024
         ]
-    , bgroup "2*"
+    , bgroup "bs x 2"
         [ bgroup "8" $ benchAll twoB8
         , bgroup "32" $ benchAll twoB32
         , bgroup "64" $ benchAll twoB64
         , bgroup "256" $ benchAll twoB256
         , bgroup "1024" $ benchAll twoB1024
         ]
-    , bgroup "2x"
+    , bgroup "bs + bs"
         [ bgroup "8+1024" $ benchAll twoB8_1024
         , bgroup "32+256" $ benchAll twoB32_256
         , bgroup "256+8" $ benchAll twoB256_8
         , bgroup "1024+64" $ benchAll twoB1024_64
         ]
-    , bgroup "3*"
+    , bgroup "bs x 3"
         [ bgroup "8" $ benchAll threeB8
         , bgroup "32" $ benchAll threeB32
         , bgroup "64" $ benchAll threeB64
@@ -67,11 +67,9 @@ main = defaultMain
         , benchCereal lenthreeB1024
         , benchBinary lenthreeB1024
         ]
-    , bgroup "4 words" $ benchAll wordseq
-    , bgroup "50 * 4 words" $ benchAll wordseqs50
-{-
-    , bgroup "1000 * 4 words" $ benchAll wordseqs1000
--}
+    , bgroup "words x 4" $ benchAll wordseq
+    , bgroup "words4 x 50" $ benchAll wordseqs50
+    , bgroup "words4 x 1000" $ benchAll wordseqs1000
     ]
     where !b8    = B.replicate 8 0xf7
           !b32   = B.replicate 32 0xf7

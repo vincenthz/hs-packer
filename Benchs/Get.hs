@@ -31,7 +31,7 @@ benchAll a = [ benchBclassGet a x, benchPackerGet a x, benchCerealGet a x, bench
     where !x = implPutPacker a
 
 main = defaultMain
-    [ bgroup "4 words" $ benchAll wordseq
+    [ bgroup "words x 4" $ benchAll wordseq
     , bgroup "pascalstr"
         [ bgroup "8" $ benchAll p8
         , bgroup "32" $ benchAll p32
@@ -39,9 +39,9 @@ main = defaultMain
         , bgroup "256" $ benchAll p256
         , bgroup "1024" $ benchAll p1024
         ]
+    --, bgroup "words4 x 50" $ benchAll wordseqs50
+    --, bgroup "words4 x 1000" $ benchAll wordseqs1000
     ]
-    --,  bgroup "50 * 4 words" $ benchAll wordseqs50
-    --, bgroup "1000 * 4 words" $ benchAll wordseqs1000
     where !b8    = B.replicate 8 0xf7
           !b32   = B.replicate 32 0xf7
           !b64   = B.replicate 64 0x7f
