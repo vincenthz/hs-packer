@@ -26,3 +26,7 @@ Put: Put.hs $(COMMON)
 
 Get: Get.hs $(COMMON)
 	$(GHCMAKE) -O2 $@
+
+.PHONY: clean
+clean:
+	-rm -f *.html Get Put *.o *.hi
