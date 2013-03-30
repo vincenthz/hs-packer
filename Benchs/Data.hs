@@ -7,6 +7,7 @@ import qualified Data.ByteString.Internal as B
 import qualified Data.ByteString.Lazy as L
 import Control.DeepSeq
 import Control.Applicative
+import Control.Monad
 
 import Foreign.Ptr
 import Foreign.Storable
@@ -127,6 +128,7 @@ instance ImplPacker ThreeBSWithLen where
         where len = B.length b1 + B.length b2 + B.length b3
     implGetPacker _ = undefined
 
+-- just a mutable bytestring test using unsafeCreate and direct poking/memcpy.
 instance ImplBasic ThreeBSWithLenIO where
     implPutBasic (ThreeBSWithLenIO tbs) = B.unsafeCreate (4+len) $ \ptr -> do
         poke (castPtr ptr) (fromIntegral len :: Word32)
@@ -209,18 +211,31 @@ instance Binary.Binary WordSeq where
 
 instance ImplPacker WordSeqs where
     implPutPacker (WordSeqs l) =
-        Packer.runPacking (16 * length l) $ mapM_ loop l
+        Packer.runPacking (4 + 16 * len) (Packer.putWord32LE (fromIntegral len) >> mapM_ loop l)
         where loop (WordSeq a b c d) = do
                     Packer.putWord32LE a
                     Packer.putWord16LE b
                     Packer.putWord16LE c
                     Packer.putWord64LE d
-    implGetPacker = undefined
+              len = length l
+    implGetPacker = WordSeqs <$> Packer.runUnpacking (Packer.getWord32LE >>= \n -> replicateM (fromIntegral n) (WordSeq <$> Packer.getWord32LE <*> Packer.getWord16LE <*> Packer.getWord16LE <*> Packer.getWord64LE))
 
 instance ImplBasic WordSeqs where
-    implPutBasic (WordSeqs l) = B.concat $ concatMap tb l
+    implPutBasic (WordSeqs l) = B.concat (blen : concatMap tb l)
         where tb (WordSeq a b c d) = [B.replicate 4 0,B.replicate 2 0,B.replicate 2 0,B.replicate 8 0]
-    implGetBasic = undefined
+              blen = B.pack [len `isr` 0, len `isr` 8, len `isr` 16, len `isr` 24]
+              len  = length l
+
+    implGetBasic bs =
+        let (blen,bs1) = B.splitAt 4 bs in
+        let len = case B.unpack blen of
+                    [a1,a2,a3,a4] -> (isl a1 0 .|. isl a2 8 .|. isl a3 16 .|. isl a4 24) in
+        WordSeqs (loop len bs1)
+        where loop :: Int -> B.ByteString -> [WordSeq]
+              loop 0   _ = []
+              loop len b =
+                let (b1,b2) = B.splitAt 16 bs in
+                implGetBasic b1 : loop (len-1) b2
 
 instance ImplBuilder WordSeqs where
     implPutBuilder (WordSeqs l) = Builder.toLazyByteString $ mconcat (loop l)
@@ -228,14 +243,14 @@ instance ImplBuilder WordSeqs where
               loop ((WordSeq a b c d):xs) = Builder.word32LE a:Builder.word16LE b:Builder.word16LE c:Builder.word64LE d:loop xs
 
 instance Cereal.Serialize WordSeqs where
-    put (WordSeqs l) = mapM_ loop l
+    put (WordSeqs l) = Cereal.putWord32le (fromIntegral $ length l) >> mapM_ loop l
         where loop (WordSeq a b c d) = Cereal.putWord32le a >> Cereal.putWord16le b >> Cereal.putWord16le c >> Cereal.putWord64le d
-    get = undefined
+    get = Cereal.getWord32le >>= \n -> WordSeqs <$> replicateM (fromIntegral n) (WordSeq <$> Cereal.getWord32le <*> Cereal.getWord16le <*> Cereal.getWord16le <*> Cereal.getWord64le)
 
 instance Binary.Binary WordSeqs where
-    put (WordSeqs l) = mapM_ loop l
+    put (WordSeqs l) = Binary.putWord32le (fromIntegral $ length l) >> mapM_ loop l
         where loop (WordSeq a b c d) = Binary.putWord32le a >> Binary.putWord16le b >> Binary.putWord16le c >> Binary.putWord64le d
-    get = undefined
+    get = Binary.getWord32le >>= \n -> WordSeqs <$> replicateM (fromIntegral n) (WordSeq <$> Binary.getWord32le <*> Binary.getWord16le <*> Binary.getWord16le <*> Binary.getWord64le)
 
 instance ImplBasic PascalString where
     implPutBasic (PascalString b) =
