@@ -15,7 +15,6 @@ module Data.Packer.Internal
     , Hole
     , Unpacking(..)
     , Memory(..)
-    , UnpackSt(..)
     , PackSt(..)
     , OutOfBoundUnpacking(..)
     , OutOfBoundPacking(..)
@@ -38,16 +37,13 @@ import Foreign.Ptr
 import Foreign.ForeignPtr
 import Data.Data
 import Data.Word
-import Control.Exception (Exception, throw)
+import Control.Exception (Exception, throw, throwIO)
 import Control.Monad.State
-import Control.Applicative (Applicative, (<$>), (<*>))
+import Control.Applicative (Applicative(..), (<$>), (<*>))
 
 -- | Represent a memory block with a ptr as beginning
 data Memory = Memory {-# UNPACK #-} !(Ptr Word8)
                      {-# UNPACK #-} !Int
-
--- | Unpacking state
-data UnpackSt = UnpackSt !(ForeignPtr Word8) !Memory {-# UNPACK #-} !Memory
 
 -- | Packing state
 data PackSt = PackSt (Ptr Word8) !Int !Memory
@@ -57,8 +53,35 @@ newtype Packing a = Packing { runPacking_ :: StateT PackSt IO a }
                   deriving (Functor,Applicative,Monad,MonadIO)
 
 -- | Unpacking monad
-newtype Unpacking a = Unpacking { runUnpacking_ :: StateT UnpackSt IO a }
-                 deriving (Functor,Applicative,Monad,MonadIO)
+newtype Unpacking a = Unpacking { runUnpacking_ :: (ForeignPtr Word8, Memory) -> Memory -> IO (a, Memory) }
+
+instance Monad Unpacking where
+    return = returnUnpacking
+    (>>=)  = bindUnpacking
+
+instance Functor Unpacking where
+    fmap = fmapUnpacking
+
+instance Applicative Unpacking where
+    pure  = returnUnpacking
+    (<*>) = apUnpacking
+
+bindUnpacking m1 m2 = Unpacking $ \cst st -> do
+    (a, st2) <- runUnpacking_ m1 cst st
+    runUnpacking_ (m2 a) cst st2
+{-# INLINE bindUnpacking #-}
+
+fmapUnpacking :: (a -> b) -> Unpacking a -> Unpacking b
+fmapUnpacking f m = Unpacking $ \cst st -> runUnpacking_ m cst st >>= \(a, st2) -> return (f a, st2)
+{-# INLINE fmapUnpacking #-}
+
+returnUnpacking :: a -> Unpacking a
+returnUnpacking a = Unpacking $ \_ st -> return (a,st)
+{-# INLINE [0] returnUnpacking #-}
+
+apUnpacking :: Unpacking (a -> b) -> Unpacking a -> Unpacking b
+apUnpacking fm m = fm >>= \p -> m >>= \r2 -> return (p r2)
+{-# INLINE [0] apUnpacking #-}
 
 -- | Exception when trying to put bytes out of the memory bounds.
 data OutOfBoundPacking = OutOfBoundPacking Int -- position relative to the end
@@ -78,57 +101,47 @@ instance Exception OutOfBoundPacking
 instance Exception HoleInPacking
 instance Exception OutOfBoundUnpacking
 
--- TODO not firing probably because of earlier inlining ?
-{-# RULES
-"check/check merged" forall n m f g.
-  (unpackCheckAct n f) <*> (unpackCheckAct m g) = unpackCheckAct (n+m) (\ptr -> f ptr <*> g (ptr `plusPtr` n))
-"checkRef/checkRef merged" forall n m f g.
-  (unpackCheckActRef n f) <*> (unpackCheckActRef m g) = unpackCheckActRef (n+m) (\r ptr -> f r ptr <*> g r (ptr `plusPtr` n))
-  #-}
-
 unpackUnsafeActRef :: Int -> (ForeignPtr Word8 -> Ptr Word8 -> IO a) -> Unpacking a
-unpackUnsafeActRef n act = Unpacking $ do
-    (UnpackSt fptr iniBlock (Memory ptr sz)) <- get
-    r <- lift (act fptr ptr)
-    put (UnpackSt fptr iniBlock (Memory (ptr `plusPtr` n) (sz - n)))
-    return r
+unpackUnsafeActRef n act = Unpacking $ \(fptr, iniBlock) st@(Memory ptr sz) -> do
+    r <- act fptr ptr
+    return (r, Memory (ptr `plusPtr` n) (sz - n))
 
 unpackCheckActRef :: Int -> (ForeignPtr Word8 -> Ptr Word8 -> IO a) -> Unpacking a
-unpackCheckActRef n act = Unpacking $ do
-    (UnpackSt fptr iniBlock@(Memory iniPtr _) (Memory ptr sz)) <- get
-    when (sz < n) (lift $ throw $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
-    r <- lift (act fptr ptr)
-    put (UnpackSt fptr iniBlock (Memory (ptr `plusPtr` n) (sz - n)))
-    return r
+unpackCheckActRef n act = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memory ptr sz) -> do
+    when (sz < n) (throwIO $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
+    r <- act fptr ptr
+    return (r, Memory (ptr `plusPtr` n) (sz - n))
+{-# INLINE [0] unpackCheckActRef #-}
 
 unpackUnsafeAct :: Int -> (Ptr Word8 -> IO a) -> Unpacking a
 unpackUnsafeAct n act = unpackUnsafeActRef n (\_ -> act)
 
 unpackCheckAct :: Int -> (Ptr Word8 -> IO a) -> Unpacking a
 unpackCheckAct n act = unpackCheckActRef n (\_ -> act)
+{-# INLINE [0] unpackCheckAct #-}
 
 -- | Set the new position from the beginning in the memory block.
 -- This is useful to skip bytes or when using absolute offsets from a header or some such.
 unpackSetPosition :: Int -> Unpacking ()
-unpackSetPosition pos = Unpacking $ do
-    (UnpackSt fptr iniBlock@(Memory iniPtr sz) _) <- get
-    when (pos < 0 || pos >= sz) (lift $ throw $ OutOfBoundUnpacking pos 0)
-    put (UnpackSt fptr iniBlock (Memory (iniPtr `plusPtr` pos) (sz-pos)))
+unpackSetPosition pos = Unpacking $ \(fptr, iniBlock@(Memory iniPtr sz)) _ -> do
+    when (pos < 0 || pos >= sz) (throwIO $ OutOfBoundUnpacking pos 0)
+    return ((), Memory (iniPtr `plusPtr` pos) (sz-pos))
 
 -- | Get the position in the memory block.
 unpackGetPosition :: Unpacking Int
-unpackGetPosition = Unpacking $ gets (\(UnpackSt _ (Memory iniPtr _) (Memory ptr _)) -> ptr `minusPtr` iniPtr)
+unpackGetPosition = Unpacking $
+    \(_, (Memory iniPtr _)) st@(Memory ptr _) -> return (ptr `minusPtr` iniPtr, st)
 
 unpackGetNbRemaining :: Unpacking Int
-unpackGetNbRemaining = Unpacking $ gets (\(UnpackSt _ _ (Memory _ sz)) -> sz)
+unpackGetNbRemaining = Unpacking $
+    \_ st@(Memory _ sz) -> return (sz,st)
 
 -- | Allow to look into the memory.
 -- This is inherently unsafe
 unpackLookahead :: (Ptr Word8 -> Int -> IO a) -- ^ callback with current position and byte left
                 -> Unpacking a
-unpackLookahead f = Unpacking $ do
-    (UnpackSt _ _ (Memory ptr sz)) <- get
-    lift $ f ptr sz
+unpackLookahead f = Unpacking $
+    \_ st@(Memory ptr sz) -> f ptr sz >>= \a -> return (a, st)
 
 withPackMemory :: Int -> (Ptr Word8 -> IO a) -> StateT PackSt IO a
 withPackMemory n act = do
