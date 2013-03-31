@@ -2,12 +2,20 @@ COMMON = Impl.hs Data.hs
 GHCMAKE = ghc --make
 
 PUT_BENCHS = bench_put_pstr.html bench_put_bs.html bench_put_word.html bench_put_words.html
-GET_BENCHS = bench_get.html
+GET_BENCHS = bench_get.html bench_get_big.html
 
+.PHONY: all all_get all_put
 all: $(PUT_BENCHS) $(GET_BENCHS)
 
+all_get: $(GET_BENCHS)
+
+all_put: $(PUT_BENCHS)
+
 bench_get.html: Get
-	./Get -o $@
+	./Get -o $@ pascalstr word
+
+bench_get_big.html: Get
+	./Get -o $@ big
 
 bench_put_pstr.html: Put
 	./Put -o $@ pstr
