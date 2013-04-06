@@ -15,7 +15,6 @@ module Data.Packer.Internal
     , Hole
     , Unpacking(..)
     , Memory(..)
-    , PackSt(..)
     , OutOfBoundUnpacking(..)
     , OutOfBoundPacking(..)
     , HoleInPacking(..)
@@ -37,20 +36,49 @@ import Foreign.Ptr
 import Foreign.ForeignPtr
 import Data.Data
 import Data.Word
-import Control.Exception (Exception, throw, throwIO)
-import Control.Monad.State
+import Control.Exception (Exception, throwIO)
+import Control.Monad.Trans
 import Control.Applicative (Applicative(..), (<$>), (<*>))
+import Control.Concurrent.MVar
+import Control.Monad (when)
 
 -- | Represent a memory block with a ptr as beginning
 data Memory = Memory {-# UNPACK #-} !(Ptr Word8)
                      {-# UNPACK #-} !Int
 
--- | Packing state
-data PackSt = PackSt (Ptr Word8) !Int !Memory
-
 -- | Packing monad
-newtype Packing a = Packing { runPacking_ :: StateT PackSt IO a }
-                  deriving (Functor,Applicative,Monad,MonadIO)
+newtype Packing a = Packing { runPacking_ :: (Ptr Word8, MVar Int) -> Memory -> IO (a, Memory) }
+
+instance Monad Packing where
+    return = returnPacking
+    (>>=)  = bindPacking
+
+instance MonadIO Packing where
+    liftIO f = Packing $ \_ st -> f >>= \a -> return (a,st)
+
+instance Functor Packing where
+    fmap = fmapPacking
+
+instance Applicative Packing where
+    pure  = returnPacking
+    (<*>) = apPacking
+
+bindPacking m1 m2 = Packing $ \cst st -> do
+    (a, st2) <- runPacking_ m1 cst st
+    runPacking_ (m2 a) cst st2
+{-# INLINE bindPacking #-}
+
+fmapPacking :: (a -> b) -> Packing a -> Packing b
+fmapPacking f m = Packing $ \cst st -> runPacking_ m cst st >>= \(a, st2) -> return (f a, st2)
+{-# INLINE fmapPacking #-}
+
+returnPacking :: a -> Packing a
+returnPacking a = Packing $ \_ st -> return (a,st)
+{-# INLINE [0] returnPacking #-}
+
+apPacking :: Packing (a -> b) -> Packing a -> Packing b
+apPacking fm m = fm >>= \p -> m >>= \r2 -> return (p r2)
+{-# INLINE [0] apPacking #-}
 
 -- | Unpacking monad
 newtype Unpacking a = Unpacking { runUnpacking_ :: (ForeignPtr Word8, Memory) -> Memory -> IO (a, Memory) }
@@ -58,6 +86,9 @@ newtype Unpacking a = Unpacking { runUnpacking_ :: (ForeignPtr Word8, Memory) ->
 instance Monad Unpacking where
     return = returnUnpacking
     (>>=)  = bindUnpacking
+
+instance MonadIO Unpacking where
+    liftIO f = Unpacking $ \_ st -> f >>= \a -> return (a,st)
 
 instance Functor Unpacking where
     fmap = fmapUnpacking
@@ -143,23 +174,19 @@ unpackLookahead :: (Ptr Word8 -> Int -> IO a) -- ^ callback with current positio
 unpackLookahead f = Unpacking $
     \_ st@(Memory ptr sz) -> f ptr sz >>= \a -> return (a, st)
 
-withPackMemory :: Int -> (Ptr Word8 -> IO a) -> StateT PackSt IO a
-withPackMemory n act = do
-    (PackSt iPos holes (Memory ptr sz)) <- get
-    when (sz < n) (lift $ throw $ OutOfBoundPacking sz n)
-    r <- lift (act ptr)
-    put $ PackSt iPos holes (Memory (ptr `plusPtr` n) (sz - n))
-    return r
+packCheckAct :: Int -> (Ptr Word8 -> IO a) -> Packing a
+packCheckAct n act = Packing $ \_ (Memory ptr sz) -> do
+    when (sz < n) (throwIO $ OutOfBoundPacking sz n)
+    r <- act ptr
+    return (r, Memory (ptr `plusPtr` n) (sz - n))
+{-# INLINE [0] packCheckAct #-}
 
 modifyHoles :: (Int -> Int) -> Packing ()
-modifyHoles f = Packing $ modify (\(PackSt iPos holes mem) -> PackSt iPos (f holes) mem)
-
-packCheckAct :: Int -> (Ptr Word8 -> IO a) -> Packing a
-packCheckAct n act = Packing (withPackMemory n act)
+modifyHoles f = Packing $ \(_, holesMVar) mem -> modifyMVar_ holesMVar (\v -> return $! f v) >> return ((), mem)
 
 -- | Get the position in the memory block.
 packGetPosition :: Packing Int
-packGetPosition = Packing $ gets (\(PackSt iniPtr _ (Memory ptr _)) -> ptr `minusPtr` iniPtr)
+packGetPosition = Packing $ \(iniPtr, _) mem@(Memory ptr _) -> return (ptr `minusPtr` iniPtr, mem)
 
 -- | A Hole represent something that need to be filled
 -- later, for example a CRC, a prefixed size, etc.
@@ -179,4 +206,4 @@ packHole n f = do
 --
 -- TODO: user can use one hole many times leading to wrong counting.
 fillHole :: Hole a -> a -> Packing ()
-fillHole (Hole closure) a = modifyHoles (\i -> i - 1) >> Packing (lift $ closure a)
+fillHole (Hole closure) a = modifyHoles (\i -> i - 1) >> liftIO (closure a)

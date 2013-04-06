@@ -20,6 +20,7 @@ import Foreign.Ptr
 import Foreign.ForeignPtr
 import Control.Monad.State
 import Control.Exception
+import Control.Concurrent.MVar (takeMVar, newMVar)
 
 -- | Run packing on an arbitrary buffer with a size.
 --
@@ -30,7 +31,10 @@ runPackingAt :: Ptr Word8  -- ^ Pointer to the beginning of the memory
              -> Packing () -- ^ Packing action
              -> IO Int     -- ^ Number of bytes filled
 runPackingAt ptr sz action = do
-    (PackSt _ holes (Memory _ leftSz)) <- execStateT (runPacking_ action) (PackSt ptr 0 $ Memory ptr sz)
+    mvar <- newMVar 0
+    ((), (Memory _ leftSz)) <- (runPacking_ action) (ptr,mvar) (Memory ptr sz)
+    --(PackSt _ holes (Memory _ leftSz)) <- execStateT (runPacking_ action) (PackSt ptr 0 $ Memory ptr sz)
+    holes <- takeMVar mvar
     when (holes > 0) (throwIO $ HoleInPacking holes)
     return $ sz - leftSz
 
