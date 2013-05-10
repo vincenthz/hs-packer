@@ -44,11 +44,6 @@ swap64 w =
     .|. ((w `shr` 40) .&. 0xff00)     .|. ((w .&. 0xff00) `shl` 40)
     .|. ((w `shr` 24) .&. 0xff0000)   .|. ((w .&. 0xff0000) `shl` 24)
     .|. ((w `shr` 8)  .&. 0xff000000) .|. ((w .&. 0xff000000) `shl` 8)
-{-
-    .|. ((w `shr` 48) .&. 0xff00)     .|. ((w .&. 0xff00) `shl` 48)
-    .|. ((w `shr` 40) .&. 0xff0000)   .|. ((w .&. 0xff0000) `shl` 40)
-    .|. ((w `shr` 32) .&. 0xff000000) .|. ((w .&. 0xff000000) `shl` 32)
--}
 
 -- | swap endianness on a Word32
 swap32 :: Word32 -> Word32
