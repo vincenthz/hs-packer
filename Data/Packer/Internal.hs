@@ -132,21 +132,30 @@ instance Exception OutOfBoundPacking
 instance Exception HoleInPacking
 instance Exception OutOfBoundUnpacking
 
-unpackUnsafeActRef :: Int -> (ForeignPtr Word8 -> Ptr Word8 -> IO a) -> Unpacking a
+-- | run an action to transform a number of bytes into a 'a'
+-- and increment the pointer by number of bytes.
+unpackUnsafeActRef :: Int -- ^ number of bytes
+                   -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
+                   -> Unpacking a
 unpackUnsafeActRef n act = Unpacking $ \(fptr, iniBlock) st@(Memory ptr sz) -> do
     r <- act fptr ptr
     return (r, Memory (ptr `plusPtr` n) (sz - n))
 
-unpackCheckActRef :: Int -> (ForeignPtr Word8 -> Ptr Word8 -> IO a) -> Unpacking a
+-- | similar 'unpackUnsafeActRef' but does boundary checking.
+unpackCheckActRef :: Int
+                  -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
+                  -> Unpacking a
 unpackCheckActRef n act = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memory ptr sz) -> do
     when (sz < n) (throwIO $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
     r <- act fptr ptr
     return (r, Memory (ptr `plusPtr` n) (sz - n))
 {-# INLINE [0] unpackCheckActRef #-}
 
+-- | Similar to unpackUnsafeActRef except that it throw the foreign ptr.
 unpackUnsafeAct :: Int -> (Ptr Word8 -> IO a) -> Unpacking a
 unpackUnsafeAct n act = unpackUnsafeActRef n (\_ -> act)
 
+-- | Similar to unpackCheckActRef except that it throw the foreign ptr.
 unpackCheckAct :: Int -> (Ptr Word8 -> IO a) -> Unpacking a
 unpackCheckAct n act = unpackCheckActRef n (\_ -> act)
 {-# INLINE [0] unpackCheckAct #-}
@@ -163,9 +172,9 @@ unpackGetPosition :: Unpacking Int
 unpackGetPosition = Unpacking $
     \(_, (Memory iniPtr _)) st@(Memory ptr _) -> return (ptr `minusPtr` iniPtr, st)
 
+-- | Return the number of remaining bytes
 unpackGetNbRemaining :: Unpacking Int
-unpackGetNbRemaining = Unpacking $
-    \_ st@(Memory _ sz) -> return (sz,st)
+unpackGetNbRemaining = Unpacking $ \_ st@(Memory _ sz) -> return (sz,st)
 
 -- | Allow to look into the memory.
 -- This is inherently unsafe
@@ -174,6 +183,7 @@ unpackLookahead :: (Ptr Word8 -> Int -> IO a) -- ^ callback with current positio
 unpackLookahead f = Unpacking $
     \_ st@(Memory ptr sz) -> f ptr sz >>= \a -> return (a, st)
 
+-- | run a pack action on the internal packed buffer.
 packCheckAct :: Int -> (Ptr Word8 -> IO a) -> Packing a
 packCheckAct n act = Packing $ \_ (Memory ptr sz) -> do
     when (sz < n) (throwIO $ OutOfBoundPacking sz n)
@@ -181,6 +191,7 @@ packCheckAct n act = Packing $ \_ (Memory ptr sz) -> do
     return (r, Memory (ptr `plusPtr` n) (sz - n))
 {-# INLINE [0] packCheckAct #-}
 
+-- | modify holes
 modifyHoles :: (Int -> Int) -> Packing ()
 modifyHoles f = Packing $ \(_, holesMVar) mem -> modifyMVar_ holesMVar (\v -> return $! f v) >> return ((), mem)
 

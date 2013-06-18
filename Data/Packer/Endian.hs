@@ -56,35 +56,47 @@ swap16 :: Word16 -> Word16
 swap16 w = (w `shr` 8) .|. (w `shl` 8)
 
 #ifdef CPU_BIG_ENDIAN
+-- | 16 bit big endian to host endian
 {-# INLINE be16Host #-}
 be16Host :: Word16 -> Word16
 be16Host = id
+-- | 32 bit big endian to host endian
 {-# INLINE be32Host #-}
 be32Host :: Word32 -> Word32
 be32Host = id
+-- | 64 bit big endian to host endian
 {-# INLINE be64Host #-}
 be64Host :: Word64 -> Word64
 be64Host = id
+-- | 16 bit little endian to host endian
 le16Host :: Word16 -> Word16
 le16Host w = swap16 w
+-- | 32 bit little endian to host endian
 le32Host :: Word32 -> Word32
 le32Host w = swap32 w
+-- | 64 bit little endian to host endian
 le64Host :: Word64 -> Word64
 le64Host w = swap64 w
 #else
+-- | 16 bit little endian to host endian
 {-# INLINE le16Host #-}
 le16Host :: Word16 -> Word16
 le16Host = id
+-- | 32 bit little endian to host endian
 {-# INLINE le32Host #-}
 le32Host :: Word32 -> Word32
 le32Host = id
+-- | 64 bit little endian to host endian
 {-# INLINE le64Host #-}
 le64Host :: Word64 -> Word64
 le64Host = id
+-- | 16 bit big endian to host endian
 be16Host :: Word16 -> Word16
 be16Host w = swap16 w
+-- | 32 bit big endian to host endian
 be32Host :: Word32 -> Word32
 be32Host w = swap32 w
+-- | 64 bit big endian to host endian
 be64Host :: Word64 -> Word64
 be64Host w = swap64 w
 #endif
