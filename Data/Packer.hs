@@ -23,6 +23,7 @@ module Data.Packer
     , runUnpacking
     , tryUnpacking
     , runPacking
+    , runPackingRes
     -- * Unpacking functions
     , unpackSkip
     , unpackSetPosition
@@ -301,5 +302,9 @@ tryUnpacking :: Unpacking a -> ByteString -> Either E.SomeException a
 tryUnpacking action bs = unsafeDoIO $ tryUnpackingIO bs action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
-runPacking :: Int -> Packing () -> ByteString
-runPacking sz action = unsafeDoIO $ runPackingIO sz action
+runPackingRes :: Int -> Packing a -> (a, ByteString)
+runPackingRes sz action = unsafeDoIO $ runPackingIO sz action
+
+-- | Run packing with a buffer created internally with a monadic action and return the bytestring
+runPacking :: Int -> Packing a -> ByteString
+runPacking sz action = snd $ runPackingRes sz action

@@ -26,17 +26,17 @@ import Control.Concurrent.MVar (takeMVar, newMVar)
 --
 -- This is available, for example to run on mmap typed memory, and this is highly unsafe,
 -- as the user need to make sure the pointer and size passed to this function are correct.
-runPackingAt :: Ptr Word8  -- ^ Pointer to the beginning of the memory
-             -> Int        -- ^ Size of the memory
-             -> Packing () -- ^ Packing action
-             -> IO Int     -- ^ Number of bytes filled
+runPackingAt :: Ptr Word8   -- ^ Pointer to the beginning of the memory
+             -> Int         -- ^ Size of the memory
+             -> Packing a   -- ^ Packing action
+             -> IO (a, Int) -- ^ Number of bytes filled
 runPackingAt ptr sz action = do
     mvar <- newMVar 0
-    ((), (Memory _ leftSz)) <- (runPacking_ action) (ptr,mvar) (Memory ptr sz)
+    (a, (Memory _ leftSz)) <- (runPacking_ action) (ptr,mvar) (Memory ptr sz)
     --(PackSt _ holes (Memory _ leftSz)) <- execStateT (runPacking_ action) (PackSt ptr 0 $ Memory ptr sz)
     holes <- takeMVar mvar
     when (holes > 0) (throwIO $ HoleInPacking holes)
-    return $ sz - leftSz
+    return (a, sz - leftSz)
 
 -- | Run unpacking on an arbitrary buffer with a size.
 --
