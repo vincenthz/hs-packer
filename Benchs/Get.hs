@@ -26,7 +26,8 @@ import Foreign.Storable
 import Impl
 import Data
 
---benchAll :: (NFData a, ImplPacker a) => 
+-- serialize the object with Packer and then we benchmark all different
+-- implementation on the serialized string.
 benchAll a = [ benchBclassGet a x, benchPackerGet a x, benchCerealGet a x, benchBinaryGet a x ]
     where !x = implPutPacker a
 
