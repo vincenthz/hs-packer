@@ -286,7 +286,7 @@ putBytes :: ByteString -> Packing ()
 putBytes bs =
     packCheckAct len $ \ptr ->
     withForeignPtr fptr $ \ptr2 ->
-    B.memcpy ptr (ptr2 `plusPtr` o) len
+    B.memcpy ptr (ptr2 `plusPtr` o) (fromIntegral len)
   where (fptr,o,len) = B.toForeignPtr bs
 
 -- | Put an arbitrary type with the Storable class constraint.
