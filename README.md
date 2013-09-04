@@ -3,7 +3,7 @@ Packer: fast strict serialization in haskell
 
 Packer is originally an experiment when benchmarking other serialization
 solution, namely cereal and binary. It turns out that the experiment yields
-interesting result performance wise, and also allowed different use cases.
+interesting result performance-wise, and also allowed different use cases.
 
 Packer provides a way to de-serialize and serialize data, from/to bytestring.
 The usage is very similar to binary and cereal runPut/runGet, except that it
