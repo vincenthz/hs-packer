@@ -22,6 +22,20 @@ module Data.Packer.Endian
 import Data.Bits
 import Data.Word
 
+#if MIN_VERSION_base(4,7,0)
+-- | swap endianness on a Word16
+swap16 :: Word16 -> Word16
+swap16 = byteSwap16
+
+-- | Transform a 32 bit value bytes from a.b.c.d to d.c.b.a
+swap32 :: Word32 -> Word32
+swap32 = byteSwap32
+
+-- | Transform a 64 bit value bytes from a.b.c.d.e.f.g.h to h.g.f.e.d.c.b.a
+swap64 :: Word64 -> Word64
+swap64 = byteSwap64
+
+#else
 #if BITS_IS_OLD
 shr :: Bits a => a -> Int -> a
 shr = shiftR
@@ -54,6 +68,7 @@ swap32 w =
 -- | swap endianness on a Word16
 swap16 :: Word16 -> Word16
 swap16 w = (w `shr` 8) .|. (w `shl` 8)
+#endif
 
 #ifdef CPU_BIG_ENDIAN
 -- | 16 bit big endian to host endian
