@@ -18,6 +18,7 @@ module Data.Packer
     , Unpacking
     , OutOfBoundUnpacking(..)
     , OutOfBoundPacking(..)
+    , IsolationNotFullyConsumed(..)
     , Hole
     -- * Main methods
     , runUnpacking
@@ -44,6 +45,7 @@ module Data.Packer
     , getRemaining
     , getRemainingCopy
     , getStorable
+    , isolate
     -- * Packing functions
     , packGetPosition
     , putWord8

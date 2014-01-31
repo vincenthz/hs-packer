@@ -131,6 +131,13 @@ main = defaultMain
                                                     (runUnpacking (unpackSetPosition 2) (B.singleton 1)))
             , testCase "unpacking set pos after" (assertException "unpacking position" (\(OutOfBoundUnpacking _ _) -> Just ())
                                                     (runUnpacking (unpackSetPosition (-1)) (B.singleton 1)))
+            , testCase "unpacking isolate" (runUnpacking (isolate 2 (getBytes 2) >>= \i -> getWord8 >>= \r -> return (i,r)) (B.pack [1,2,3]) @=? (B.pack [1,2], 3))
+            , testCase "unpacking isolate out of bounds" $
+                assertException "unpacking isolate" (\(OutOfBoundUnpacking _ _) -> Just ())
+                    (runUnpacking (isolate 2 (getBytes 3)) (B.pack [1,2,3]))
+            , testCase "unpacking isolate not consumed" $
+                assertException "unpacking isolate" (\(IsolationNotFullyConsumed _ _) -> Just ())
+                    (runUnpacking (isolate 3 (getBytes 2)) (B.pack [1,2,3]))
             ]
         , testGroup "endianness cases" $ concatMap toEndianCase endiannessCases
         , testProperty "unpacking.packing=id" (\ds -> unpackDataStream ds (packDataStream ds) == ds)
