@@ -15,17 +15,22 @@ module Data.Packer.Internal
     , Hole
     , Unpacking(..)
     , Memory(..)
+    -- * exceptions
     , OutOfBoundUnpacking(..)
     , OutOfBoundPacking(..)
     , HoleInPacking(..)
+    , IsolationNotFullyConsumed(..)
+    -- * unpack methods
     , unpackUnsafeActRef
     , unpackCheckActRef
     , unpackUnsafeAct
     , unpackCheckAct
+    , unpackIsolate
     , unpackLookahead
     , unpackSetPosition
     , unpackGetPosition
     , unpackGetNbRemaining
+    -- * pack methods
     , packCheckAct
     , packHole
     , packGetPosition
@@ -128,9 +133,15 @@ data OutOfBoundUnpacking = OutOfBoundUnpacking Int -- position
                                                Int -- number of bytes requested
     deriving (Show,Eq,Data,Typeable)
 
+-- | Exception when isolate doesn't consume all the bytes passed in the sub unpacker
+data IsolationNotFullyConsumed = IsolationNotFullyConsumed Int -- number of bytes isolated
+                                                           Int -- number of bytes not consumed
+    deriving (Show,Eq,Data,Typeable)
+
 instance Exception OutOfBoundPacking
 instance Exception HoleInPacking
 instance Exception OutOfBoundUnpacking
+instance Exception IsolationNotFullyConsumed
 
 -- | run an action to transform a number of bytes into a 'a'
 -- and increment the pointer by number of bytes.
@@ -150,6 +161,18 @@ unpackCheckActRef n act = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memor
     r <- act fptr ptr
     return (r, Memory (ptr `plusPtr` n) (sz - n))
 {-# INLINE [0] unpackCheckActRef #-}
+
+-- | Isolate a number of bytes to run an unpacking operation.
+--
+-- If the unpacking doesn't consume all the bytes, an exception is raised.
+unpackIsolate :: Int
+              -> Unpacking a
+              -> Unpacking a
+unpackIsolate n sub = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memory ptr sz) -> do
+    when (sz < n) (throwIO $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
+    (r, Memory newPtr subLeft) <- (runUnpacking_ sub) (fptr,iniBlock) (Memory ptr n)
+    when (subLeft > 0) $ (throwIO $ IsolationNotFullyConsumed n subLeft)
+    return (r, Memory newPtr (sz - n))
 
 -- | Similar to unpackUnsafeActRef except that it throw the foreign ptr.
 unpackUnsafeAct :: Int -> (Ptr Word8 -> IO a) -> Unpacking a

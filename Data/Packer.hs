@@ -206,6 +206,14 @@ getStorable = get_ undefined
     where get_ :: Storable a => a -> Unpacking a
           get_ undefA = unpackCheckAct (sizeOf undefA) (peek . castPtr)
 
+-- | Isolate N bytes from the unpacking, and create an isolated
+-- context where only those N bytes are available.
+--
+-- If the sub unpacker doesn't consume all the bytes available,
+-- this function will raises an exception
+isolate :: Int -> Unpacking a -> Unpacking a
+isolate n subUnpacker = unpackIsolate n subUnpacker
+
 -- | Put a Word8
 putWord8 :: Word8 -> Packing ()
 putWord8 w = packCheckAct 1 (\ptr -> poke (castPtr ptr) w)
