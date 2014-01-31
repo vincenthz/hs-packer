@@ -195,6 +195,12 @@ getBytesWhile predicate = unpackLookahead searchEnd >>= \mn -> maybe (return Not
                                           else return $ Just i
 
 -- | Get an arbitrary type with the Storable class constraint.
+--
+-- The Storage method for sizeOf need to be constant size related
+-- to the type. It cannot use any fields to define its size.
+--
+-- The sizeOf method is always going to be called with undefined,
+-- so make sure sizeOf doesn't need the value of the type.
 getStorable :: Storable a => Unpacking a
 getStorable = get_ undefined
     where get_ :: Storable a => a -> Unpacking a
