@@ -45,6 +45,10 @@ module Data.Packer
     , getRemaining
     , getRemainingCopy
     , getStorable
+    , getFloat32LE
+    , getFloat32BE
+    , getFloat64LE
+    , getFloat64BE
     , isolate
     -- * Packing functions
     , packGetPosition
@@ -66,6 +70,10 @@ module Data.Packer
     , putHoleWord64BE
     , putBytes
     , putStorable
+    , putFloat32LE
+    , putFloat32BE
+    , putFloat64LE
+    , putFloat64BE
     , fillHole
     ) where
 
@@ -74,6 +82,7 @@ import Data.Packer.Internal
 import Data.Packer.Unsafe
 import Data.Packer.IO
 import Data.Packer.Endian
+import Data.Packer.IEEE754
 import Foreign.Ptr
 import Foreign.ForeignPtr
 import Data.ByteString (ByteString)
@@ -157,6 +166,22 @@ getWord64LE = unpackCheckAct 8 (peekAnd le64Host . castPtr)
 getWord64BE :: Unpacking Word64
 getWord64BE = unpackCheckAct 8 (peekAnd be64Host . castPtr)
 {-# INLINE getWord64BE #-}
+
+-- | Read a Float in little endian IEEE-754 format
+getFloat32LE :: Unpacking Float
+getFloat32LE = wordToFloat <$> getWord32LE
+
+-- | Read a Float in big endian IEEE-754 format
+getFloat32BE :: Unpacking Float
+getFloat32BE = wordToFloat <$> getWord32BE
+
+-- | Read a Double in little endian IEEE-754 format
+getFloat64LE :: Unpacking Double
+getFloat64LE = wordToDouble <$> getWord64LE
+
+-- | Read a Double in big endian IEEE-754 format
+getFloat64BE :: Unpacking Double
+getFloat64BE = wordToDouble <$> getWord64BE
 
 -- | Get a number of bytes in bytestring format.
 --
@@ -296,6 +321,21 @@ putHoleWord64BE = putHoleWord64_ be64Host
 -- | Put a Word64 Hole in little endian
 putHoleWord64LE = putHoleWord64_ le64Host
 
+-- | Write a Float in little endian IEEE-754 format
+putFloat32LE :: Float -> Packing ()
+putFloat32LE = putWord32LE . floatToWord
+
+-- | Write a Float in big endian IEEE-754 format
+putFloat32BE :: Float -> Packing ()
+putFloat32BE = putWord32BE . floatToWord
+
+-- | Write a Double in little endian IEEE-754 format
+putFloat64LE :: Double -> Packing ()
+putFloat64LE = putWord64LE . doubleToWord
+
+-- | Write a Double in big endian IEEE-754 format
+putFloat64BE :: Double -> Packing ()
+putFloat64BE = putWord64BE . doubleToWord
 
 -- | Put a Bytestring.
 putBytes :: ByteString -> Packing ()
