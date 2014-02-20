@@ -33,17 +33,21 @@ toEndianCase (n, pAct, gAct, bs, v) =
     , testCase ("get" ++ n) (runUnpacking gAct bs @=? v)
     ]
 
-data DataAtom = W8    Word8
-              | W16   Word16
-              | W16BE Word16
-              | W16LE Word16
-              | W32   Word32
-              | W32BE Word32
-              | W32LE Word32
-              | W64   Word64
-              | W64BE Word64
-              | W64LE Word64
-              | Bytes B.ByteString
+data DataAtom = W8        Word8
+              | W16       Word16
+              | W16BE     Word16
+              | W16LE     Word16
+              | W32       Word32
+              | W32BE     Word32
+              | W32LE     Word32
+              | W64       Word64
+              | W64BE     Word64
+              | W64LE     Word64
+              | Float32LE Float
+              | Float32BE Float
+              | Float64LE Double
+              | Float64BE Double
+              | Bytes     B.ByteString
               deriving (Show,Eq)
 
 newtype DataStream = DataStream [DataAtom]
@@ -56,17 +60,21 @@ arbitraryBS =
 
 instance Arbitrary DataAtom where
     arbitrary = oneof
-        [ W8    <$> arbitrary
-        , W16   <$> arbitrary
-        , W16BE <$> arbitrary
-        , W16LE <$> arbitrary
-        , W32   <$> arbitrary
-        , W32BE <$> arbitrary
-        , W32LE <$> arbitrary
-        , W64   <$> arbitrary
-        , W64BE <$> arbitrary
-        , W64LE <$> arbitrary
-        , Bytes <$> arbitraryBS
+        [ W8        <$> arbitrary
+        , W16       <$> arbitrary
+        , W16BE     <$> arbitrary
+        , W16LE     <$> arbitrary
+        , W32       <$> arbitrary
+        , W32BE     <$> arbitrary
+        , W32LE     <$> arbitrary
+        , W64       <$> arbitrary
+        , W64BE     <$> arbitrary
+        , W64LE     <$> arbitrary
+        , Float32LE <$> arbitrary
+        , Float32LE <$> arbitrary
+        , Float64BE <$> arbitrary
+        , Float64BE <$> arbitrary
+        , Bytes     <$> arbitraryBS
         ]
 
 instance Arbitrary DataStream where
@@ -76,44 +84,56 @@ instance Arbitrary DataStream where
 
 packDataStream (DataStream atoms) = runPacking (foldl sumLen 0 atoms) (mapM_ process atoms)
     where process :: DataAtom -> Packing ()
-          process (W8 w)    = putWord8 w
-          process (W16 w)   = putWord16 w
-          process (W32 w)   = putWord32 w
-          process (W64 w)   = putWord64 w
-          process (W16LE w) = putWord16LE w
-          process (W32LE w) = putWord32LE w
-          process (W64LE w) = putWord64LE w
-          process (W16BE w) = putWord16BE w
-          process (W32BE w) = putWord32BE w
-          process (W64BE w) = putWord64BE w
-          process (Bytes b) = putBytes b
+          process (W8 w)        = putWord8 w
+          process (W16 w)       = putWord16 w
+          process (W32 w)       = putWord32 w
+          process (W64 w)       = putWord64 w
+          process (W16LE w)     = putWord16LE w
+          process (W32LE w)     = putWord32LE w
+          process (W64LE w)     = putWord64LE w
+          process (W16BE w)     = putWord16BE w
+          process (W32BE w)     = putWord32BE w
+          process (W64BE w)     = putWord64BE w
+          process (Bytes b)     = putBytes b
+          process (Float32LE w) = putFloat32LE w
+          process (Float32BE w) = putFloat32BE w
+          process (Float64LE w) = putFloat64LE w
+          process (Float64BE w) = putFloat64BE w
 
-          sumLen a (W8 _)    = a + 1
-          sumLen a (W16 _)   = a + 2
-          sumLen a (W16LE _) = a + 2
-          sumLen a (W16BE _) = a + 2
-          sumLen a (W32 _)   = a + 4
-          sumLen a (W32LE _) = a + 4
-          sumLen a (W32BE _) = a + 4
-          sumLen a (W64 _)   = a + 8
-          sumLen a (W64LE _) = a + 8
-          sumLen a (W64BE _) = a + 8
-          sumLen a (Bytes b) = a + B.length b
+          sumLen a (W8 _)        = a + 1
+          sumLen a (W16 _)       = a + 2
+          sumLen a (W16LE _)     = a + 2
+          sumLen a (W16BE _)     = a + 2
+          sumLen a (W32 _)       = a + 4
+          sumLen a (W32LE _)     = a + 4
+          sumLen a (W32BE _)     = a + 4
+          sumLen a (Float32LE _) = a + 4
+          sumLen a (Float32BE _) = a + 4
+          sumLen a (Float64LE _) = a + 8
+          sumLen a (Float64BE _) = a + 8
+          sumLen a (W64 _)       = a + 8
+          sumLen a (W64LE _)     = a + 8
+          sumLen a (W64BE _)     = a + 8
+          sumLen a (Bytes b)     = a + B.length b
 
 unpackDataStream :: DataStream -> B.ByteString -> DataStream
 unpackDataStream (DataStream atoms) bs = DataStream $ runUnpacking (mapM process atoms) bs
     where process :: DataAtom -> Unpacking DataAtom
-          process (W8 _)    = W8 <$> getWord8
-          process (W16 _)   = W16 <$> getWord16
-          process (W32 _)   = W32 <$> getWord32
-          process (W64 _)   = W64 <$> getWord64
-          process (W16LE _) = W16LE <$> getWord16LE
-          process (W32LE _) = W32LE <$> getWord32LE
-          process (W64LE _) = W64LE <$> getWord64LE
-          process (W16BE _) = W16BE <$> getWord16BE
-          process (W32BE _) = W32BE <$> getWord32BE
-          process (W64BE _) = W64BE <$> getWord64BE
-          process (Bytes b) = Bytes <$> getBytes (B.length b)
+          process (W8 _)        = W8        <$> getWord8
+          process (W16 _)       = W16       <$> getWord16
+          process (W32 _)       = W32       <$> getWord32
+          process (W64 _)       = W64       <$> getWord64
+          process (W16LE _)     = W16LE     <$> getWord16LE
+          process (W32LE _)     = W32LE     <$> getWord32LE
+          process (W64LE _)     = W64LE     <$> getWord64LE
+          process (W16BE _)     = W16BE     <$> getWord16BE
+          process (W32BE _)     = W32BE     <$> getWord32BE
+          process (W64BE _)     = W64BE     <$> getWord64BE
+          process (Float32LE _) = Float32LE <$> getFloat32LE
+          process (Float32BE _) = Float32BE <$> getFloat32BE
+          process (Float64LE _) = Float64LE <$> getFloat64LE
+          process (Float64BE _) = Float64BE <$> getFloat64BE
+          process (Bytes b)     = Bytes     <$> getBytes (B.length b)
 
 assertException msg filterE act =
     handleJust filterE (\_ -> return ()) (evaluate act >> assertFailure (msg ++ " didn't raise the proper exception"))

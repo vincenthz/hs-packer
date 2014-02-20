@@ -16,6 +16,7 @@ Homepage:            http://github.com/vincenthz/hs-packer
 Library
   Build-Depends:     base >= 3 && < 5
                    , bytestring
+                   , array
                    , mtl
   Exposed-modules:   Data.Packer
                      Data.Packer.Unsafe
