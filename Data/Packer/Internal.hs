@@ -41,9 +41,9 @@ import Foreign.Ptr
 import Foreign.ForeignPtr
 import Data.Data
 import Data.Word
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception, throwIO, try, SomeException)
 import Control.Monad.Trans
-import Control.Applicative (Applicative(..), (<$>), (<*>))
+import Control.Applicative (Alternative(..), Applicative(..), (<$>), (<*>))
 import Control.Concurrent.MVar
 import Control.Monad (when)
 
@@ -68,6 +68,7 @@ instance Applicative Packing where
     pure  = returnPacking
     (<*>) = apPacking
 
+bindPacking :: Packing a -> (a -> Packing b) -> Packing b
 bindPacking m1 m2 = Packing $ \cst st -> do
     (a, st2) <- runPacking_ m1 cst st
     runPacking_ (m2 a) cst st2
@@ -102,6 +103,15 @@ instance Applicative Unpacking where
     pure  = returnUnpacking
     (<*>) = apUnpacking
 
+instance Alternative Unpacking where
+    empty = error "Data.Packer (Alternative): empty"
+    f <|> g = Unpacking $ \cst st ->
+        tryRunUnpacking f cst st >>= either (const $ runUnpacking_ g cst st) return
+
+tryRunUnpacking :: Unpacking a -> (ForeignPtr Word8, Memory) -> Memory -> IO (Either SomeException (a,Memory))
+tryRunUnpacking f cst st = try $ runUnpacking_ f cst st
+
+bindUnpacking :: Unpacking a -> (a -> Unpacking b) -> Unpacking b
 bindUnpacking m1 m2 = Unpacking $ \cst st -> do
     (a, st2) <- runUnpacking_ m1 cst st
     runUnpacking_ (m2 a) cst st2
