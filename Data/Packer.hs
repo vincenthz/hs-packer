@@ -82,6 +82,8 @@ import Data.Packer.Internal
 import Data.Packer.Family
 import Data.Packer.Unsafe
 import Data.Packer.IO
+import Data.Packer.Strict.Packing
+import Data.Packer.Strict.Unpacking
 import Data.Packer.Endian
 import Data.Packer.IEEE754
 import Foreign.Ptr

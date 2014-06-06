@@ -16,6 +16,8 @@ module Data.Packer.Unsafe
 
 import Data.Word
 import Data.Packer.Internal
+import Data.Packer.Strict.Packing
+import Data.Packer.Strict.Unpacking
 import Foreign.Ptr
 import Foreign.ForeignPtr
 import Control.Monad.State

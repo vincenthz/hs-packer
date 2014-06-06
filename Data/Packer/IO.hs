@@ -12,6 +12,8 @@ module Data.Packer.IO
     ) where
 
 import Data.Packer.Internal
+import Data.Packer.Strict.Packing
+import Data.Packer.Strict.Unpacking
 import Data.Packer.Unsafe
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Internal as B (ByteString(..), mallocByteString, toForeignPtr)

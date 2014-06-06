@@ -18,7 +18,7 @@ import Data.Word
 
 --instance Arbitrary a where
 
-endiannessCases :: [ (String, (Word64 -> Packing ()), Unpacking Word64, B.ByteString, Word64) ]
+endiannessCases :: (Unpacking u, Packing p) => [ (String, (Word64 -> p ()), u Word64, B.ByteString, Word64) ]
 endiannessCases =
     [ ("16LE", putWord16LE . fromIntegral, (fromIntegral <$> getWord16LE), B.pack [1,2], 0x0201)
     , ("16BE", putWord16BE . fromIntegral, (fromIntegral <$> getWord16BE), B.pack [2,1], 0x0201)
@@ -83,7 +83,7 @@ instance Arbitrary DataStream where
             >>= return . DataStream
 
 packDataStream (DataStream atoms) = runPacking (foldl sumLen 0 atoms) (mapM_ process atoms)
-    where process :: DataAtom -> Packing ()
+    where process :: Packing p => DataAtom -> p ()
           process (W8 w)    = putWord8 w
           process (W16 w)   = putWord16 w
           process (W32 w)   = putWord32 w
@@ -118,7 +118,7 @@ packDataStream (DataStream atoms) = runPacking (foldl sumLen 0 atoms) (mapM_ pro
 
 unpackDataStream :: DataStream -> B.ByteString -> DataStream
 unpackDataStream (DataStream atoms) bs = DataStream $ runUnpacking (mapM process atoms) bs
-    where process :: DataAtom -> Unpacking DataAtom
+    where process :: Unpacking u => DataAtom -> u DataAtom
           process (W8 _)    = W8    <$> getWord8
           process (W16 _)   = W16   <$> getWord16
           process (W32 _)   = W32   <$> getWord32
