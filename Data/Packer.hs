@@ -79,6 +79,7 @@ module Data.Packer
 
 import Control.Applicative
 import Data.Packer.Internal
+import Data.Packer.Family
 import Data.Packer.Unsafe
 import Data.Packer.IO
 import Data.Packer.Endian
@@ -105,11 +106,11 @@ peekAnd :: Storable a => (a -> b) -> Ptr a -> IO b
 peekAnd f p = f <$> peek p
 
 -- | Skip bytes
-unpackSkip :: Int -> Unpacking ()
+unpackSkip :: Unpacking u => Int -> u ()
 unpackSkip n = unpackCheckAct n (\_ -> return ())
 
 -- | Get a Word8
-getWord8 :: Unpacking Word8
+getWord8 :: Unpacking u => u Word8
 getWord8 = unpackCheckAct 1 peek
 {-# INLINE getWord8 #-}
 
@@ -117,17 +118,17 @@ getWord8 = unpackCheckAct 1 peek
 --
 -- It's recommended to use an explicit endianness (LE or BE)
 -- when unserializing format.
-getWord16 :: Unpacking Word16
+getWord16 :: Unpacking u => u Word16
 getWord16 = unpackCheckAct 2 (peek . castPtr)
 {-# INLINE getWord16 #-}
 
 -- | Get a Word16 serialized in little endian.
-getWord16LE :: Unpacking Word16
+getWord16LE :: Unpacking u => u Word16
 getWord16LE = unpackCheckAct 2 (peekAnd le16Host . castPtr)
 {-# INLINE getWord16LE #-}
 
 -- | Get a Word16 serialized in big endian.
-getWord16BE :: Unpacking Word16
+getWord16BE :: Unpacking u => u Word16
 getWord16BE = unpackCheckAct 2 (peekAnd be16Host . castPtr)
 {-# INLINE getWord16BE #-}
 
@@ -135,17 +136,17 @@ getWord16BE = unpackCheckAct 2 (peekAnd be16Host . castPtr)
 --
 -- It's recommended to use an explicit endianness (LE or BE)
 -- when unserializing format.
-getWord32 :: Unpacking Word32
+getWord32 :: Unpacking u => u Word32
 getWord32 = unpackCheckAct 4 (peek . castPtr)
 {-# INLINE getWord32 #-}
 
 -- | Get a Word32 serialized in little endian.
-getWord32LE :: Unpacking Word32
+getWord32LE :: Unpacking u => u Word32
 getWord32LE = unpackCheckAct 4 (peekAnd le32Host . castPtr)
 {-# INLINE getWord32LE #-}
 
 -- | Get a Word32 serialized in big endian.
-getWord32BE :: Unpacking Word32
+getWord32BE :: Unpacking u => u Word32
 getWord32BE = unpackCheckAct 4 (peekAnd be32Host . castPtr)
 {-# INLINE getWord32BE #-}
 
@@ -153,63 +154,63 @@ getWord32BE = unpackCheckAct 4 (peekAnd be32Host . castPtr)
 --
 -- It's recommended to use an explicit endianness (LE or BE)
 -- when unserializing format.
-getWord64 :: Unpacking Word64
+getWord64 :: Unpacking u => u Word64
 getWord64 = unpackCheckAct 8 (peek . castPtr)
 {-# INLINE getWord64 #-}
 
 -- | Get a Word64 serialized in little endian.
-getWord64LE :: Unpacking Word64
+getWord64LE :: Unpacking u => u Word64
 getWord64LE = unpackCheckAct 8 (peekAnd le64Host . castPtr)
 {-# INLINE getWord64LE #-}
 
 -- | Get a Word64 serialized in big endian.
-getWord64BE :: Unpacking Word64
+getWord64BE :: Unpacking u => u Word64
 getWord64BE = unpackCheckAct 8 (peekAnd be64Host . castPtr)
 {-# INLINE getWord64BE #-}
 
 -- | Read a Float in little endian IEEE-754 format
-getFloat32LE :: Unpacking Float
+getFloat32LE :: Unpacking u => u Float
 getFloat32LE = wordToFloat <$> getWord32LE
 
 -- | Read a Float in big endian IEEE-754 format
-getFloat32BE :: Unpacking Float
+getFloat32BE :: Unpacking u => u Float
 getFloat32BE = wordToFloat <$> getWord32BE
 
 -- | Read a Double in little endian IEEE-754 format
-getFloat64LE :: Unpacking Double
+getFloat64LE :: Unpacking u => u Double
 getFloat64LE = wordToDouble <$> getWord64LE
 
 -- | Read a Double in big endian IEEE-754 format
-getFloat64BE :: Unpacking Double
+getFloat64BE :: Unpacking u => u Double
 getFloat64BE = wordToDouble <$> getWord64BE
 
 -- | Get a number of bytes in bytestring format.
 --
 -- The original block of memory is expected to live for the life of this bytestring,
 -- and this is done so by holding the original ForeignPtr.
-getBytes :: Int -> Unpacking ByteString
+getBytes :: Unpacking u => Int -> u ByteString
 getBytes n = unpackCheckActRef n $ \fptr ptr -> do
                     o <- withForeignPtr fptr $ \origPtr -> return (ptr `minusPtr` origPtr)
                     return $ B.fromForeignPtr fptr o n
 
 -- | Similar to 'getBytes' but copy the bytes to a new bytestring without making reference
 -- to the original memory after the copy. this allow the original block of memory to go away.
-getBytesCopy :: Int -> Unpacking ByteString
+getBytesCopy :: Unpacking u => Int -> u ByteString
 getBytesCopy n = B.copy <$> getBytes n
 
 -- | Get the remaining bytes.
-getRemaining :: Unpacking ByteString
+getRemaining :: UnpackingStrict ByteString
 getRemaining = unpackGetNbRemaining >>= getBytes
 
 -- | Get the remaining bytes but copy the bytestring and drop any
 -- reference from the original function.
-getRemainingCopy :: Unpacking ByteString
+getRemainingCopy :: UnpackingStrict ByteString
 getRemainingCopy = B.copy <$> getRemaining
 
 -- | Get a number of bytes until in bytestring format.
 --
 -- this could be made more efficient
-getBytesWhile :: (Word8 -> Bool) -> Unpacking (Maybe ByteString)
+getBytesWhile :: (Word8 -> Bool) -> UnpackingStrict (Maybe ByteString)
 getBytesWhile predicate = unpackLookahead searchEnd >>= \mn -> maybe (return Nothing) (\n -> Just <$> getBytes n) mn
     where searchEnd :: Ptr Word8 -> Int -> IO (Maybe Int)
           searchEnd ptr sz = loop 0
@@ -228,9 +229,9 @@ getBytesWhile predicate = unpackLookahead searchEnd >>= \mn -> maybe (return Not
 --
 -- The sizeOf method is always going to be called with undefined,
 -- so make sure sizeOf doesn't need the value of the type.
-getStorable :: Storable a => Unpacking a
+getStorable :: (Unpacking u, Storable a) => u a
 getStorable = get_ undefined
-    where get_ :: Storable a => a -> Unpacking a
+    where get_ :: (Unpacking u, Storable a) => a -> u a
           get_ undefA = unpackCheckAct (sizeOf undefA) (peek . castPtr)
 
 -- | Isolate N bytes from the unpacking, and create an isolated
@@ -238,7 +239,7 @@ getStorable = get_ undefined
 --
 -- If the sub unpacker doesn't consume all the bytes available,
 -- this function will raises an exception
-isolate :: Int -> Unpacking a -> Unpacking a
+isolate :: Unpacking u => Int -> u a -> u a
 isolate n subUnpacker = unpackIsolate n subUnpacker
 
 -- | Put a Word8
@@ -350,11 +351,11 @@ putStorable :: Storable a => a -> Packing ()
 putStorable a = packCheckAct (sizeOf a) (\ptr -> poke (castPtr ptr) a)
 
 -- | Unpack a bytestring using a monadic unpack action.
-runUnpacking :: Unpacking a -> ByteString -> a
+runUnpacking :: UnpackingStrict a -> ByteString -> a
 runUnpacking action bs = unsafeDoIO $ runUnpackingIO bs action
 
 -- | Similar to 'runUnpacking' but returns an Either type with an exception type in case of failure.
-tryUnpacking :: Unpacking a -> ByteString -> Either E.SomeException a
+tryUnpacking :: UnpackingStrict a -> ByteString -> Either E.SomeException a
 tryUnpacking action bs = unsafeDoIO $ tryUnpackingIO bs action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring

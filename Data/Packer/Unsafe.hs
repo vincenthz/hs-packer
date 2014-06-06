@@ -45,9 +45,9 @@ runPackingAt ptr sz action = do
 runUnpackingAt :: ForeignPtr Word8 -- ^ The initial block of memory
                -> Int              -- ^ Starting offset in the block of memory
                -> Int              -- ^ Size
-               -> Unpacking a      -- ^ Unpacking action
+               -> UnpackingStrict a -- ^ Unpacking action
                -> IO a
 runUnpackingAt fptr offset sz action =
     withForeignPtr fptr $ \ptr ->
       let m = Memory (ptr `plusPtr` offset) sz
-       in fmap fst ((runUnpacking_ action) (fptr,m) m)
+       in fmap fst ((runUnpackingStrict_ action) (fptr,m) m)

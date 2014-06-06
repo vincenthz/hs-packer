@@ -22,6 +22,7 @@ Library
                      Data.Packer.Unsafe
                      Data.Packer.IO
   Other-modules:     Data.Packer.Internal
+                     Data.Packer.Family
                      Data.Packer.IEEE754
                      Data.Packer.Endian
 
