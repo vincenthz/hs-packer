@@ -28,11 +28,11 @@ import Control.Concurrent.MVar (takeMVar, newMVar)
 -- as the user need to make sure the pointer and size passed to this function are correct.
 runPackingAt :: Ptr Word8   -- ^ Pointer to the beginning of the memory
              -> Int         -- ^ Size of the memory
-             -> Packing a   -- ^ Packing action
+             -> PackingStrict a   -- ^ Packing action
              -> IO (a, Int) -- ^ Number of bytes filled
 runPackingAt ptr sz action = do
     mvar <- newMVar 0
-    (a, (Memory _ leftSz)) <- (runPacking_ action) (ptr,mvar) (Memory ptr sz)
+    (a, (Memory _ leftSz)) <- (runPackingStrict_ action) (ptr,mvar) (Memory ptr sz)
     --(PackSt _ holes (Memory _ leftSz)) <- execStateT (runPacking_ action) (PackSt ptr 0 $ Memory ptr sz)
     holes <- takeMVar mvar
     when (holes > 0) (throwIO $ HoleInPacking holes)

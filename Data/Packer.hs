@@ -243,46 +243,46 @@ isolate :: Unpacking u => Int -> u a -> u a
 isolate n subUnpacker = unpackIsolate n subUnpacker
 
 -- | Put a Word8
-putWord8 :: Word8 -> Packing ()
+putWord8 :: Packing p => Word8 -> p ()
 putWord8 w = packCheckAct 1 (\ptr -> poke (castPtr ptr) w)
 
 -- | Put a Word16 in the host endianess.
 --
 -- It's recommended to use an explicit endianness (LE or BE)
 -- when serializing format.
-putWord16 :: Word16 -> Packing ()
+putWord16 :: Packing p => Word16 -> p ()
 putWord16 w = packCheckAct 2 (\ptr -> poke (castPtr ptr) w)
 {-# INLINE putWord16 #-}
 
 -- | Put a Word16 serialized in little endian.
-putWord16LE :: Word16 -> Packing ()
+putWord16LE :: Packing p => Word16 -> p ()
 putWord16LE w = putWord16 (le16Host w)
 
 -- | Put a Word16 serialized in big endian.
-putWord16BE :: Word16 -> Packing ()
+putWord16BE :: Packing p => Word16 -> p ()
 putWord16BE w = putWord16 (be16Host w)
 
 -- | Put a Word32 in the host endianess.
 --
 -- It's recommended to use an explicit endianness (LE or BE)
 -- when serializing format.
-putWord32 :: Word32 -> Packing ()
+putWord32 :: Packing p => Word32 -> p ()
 putWord32 w = packCheckAct 4 (\ptr -> poke (castPtr ptr) w)
 {-# INLINE putWord32 #-}
 
 -- | Put a Word32 serialized in little endian.
-putWord32LE :: Word32 -> Packing ()
+putWord32LE :: Packing p => Word32 -> p ()
 putWord32LE w = putWord32 (le32Host w)
 
 -- | Put a Word32 serialized in big endian.
-putWord32BE :: Word32 -> Packing ()
+putWord32BE :: Packing p => Word32 -> p ()
 putWord32BE w = putWord32 (be32Host w)
 
 -- | Put a Word32 Hole
-putHoleWord32_ :: (Word32 -> Word32) -> Packing (Hole Word32)
+putHoleWord32_ :: (Word32 -> Word32) -> PackingStrict (Hole Word32)
 putHoleWord32_ f = packHole 4 (\ptr w -> poke (castPtr ptr) (f w))
 
-putHoleWord32, putHoleWord32BE, putHoleWord32LE :: Packing (Hole Word32)
+putHoleWord32, putHoleWord32BE, putHoleWord32LE :: PackingStrict (Hole Word32)
 -- | Put a Word32 Hole in host endian
 putHoleWord32 = putHoleWord32_ id
 
@@ -296,23 +296,23 @@ putHoleWord32LE = putHoleWord32_ le32Host
 --
 -- It's recommended to use an explicit endianness (LE or BE)
 -- when serializing format.
-putWord64 :: Word64 -> Packing ()
+putWord64 :: Packing p => Word64 -> p ()
 putWord64 w = packCheckAct 8 (\ptr -> poke (castPtr ptr) w)
 {-# INLINE putWord64 #-}
 
 -- | Put a Word64 serialized in little endian.
-putWord64LE :: Word64 -> Packing ()
+putWord64LE :: Packing p => Word64 -> p ()
 putWord64LE w = putWord64 (le64Host w)
 
 -- | Put a Word64 serialized in big endian.
-putWord64BE :: Word64 -> Packing ()
+putWord64BE :: Packing p => Word64 -> p ()
 putWord64BE w = putWord64 (be64Host w)
 
 -- | Put a Word64 Hole
-putHoleWord64_ :: (Word64 -> Word64) -> Packing (Hole Word64)
+putHoleWord64_ :: (Word64 -> Word64) -> PackingStrict (Hole Word64)
 putHoleWord64_ f = packHole 8 (\ptr w -> poke (castPtr ptr) (f w))
 
-putHoleWord64, putHoleWord64BE, putHoleWord64LE :: Packing (Hole Word64)
+putHoleWord64, putHoleWord64BE, putHoleWord64LE :: PackingStrict (Hole Word64)
 -- | Put a Word64 Hole in host endian
 putHoleWord64 = putHoleWord64_ id
 
@@ -323,23 +323,23 @@ putHoleWord64BE = putHoleWord64_ be64Host
 putHoleWord64LE = putHoleWord64_ le64Host
 
 -- | Write a Float in little endian IEEE-754 format
-putFloat32LE :: Float -> Packing ()
+putFloat32LE :: Packing p => Float -> p ()
 putFloat32LE = putWord32LE . floatToWord
 
 -- | Write a Float in big endian IEEE-754 format
-putFloat32BE :: Float -> Packing ()
+putFloat32BE :: Packing p => Float -> p ()
 putFloat32BE = putWord32BE . floatToWord
 
 -- | Write a Double in little endian IEEE-754 format
-putFloat64LE :: Double -> Packing ()
+putFloat64LE :: Packing p => Double -> p ()
 putFloat64LE = putWord64LE . doubleToWord
 
 -- | Write a Double in big endian IEEE-754 format
-putFloat64BE :: Double -> Packing ()
+putFloat64BE :: Packing p => Double -> p ()
 putFloat64BE = putWord64BE . doubleToWord
 
 -- | Put a Bytestring.
-putBytes :: ByteString -> Packing ()
+putBytes :: Packing p => ByteString -> p ()
 putBytes bs =
     packCheckAct len $ \ptr ->
     withForeignPtr fptr $ \ptr2 ->
@@ -347,7 +347,7 @@ putBytes bs =
   where (fptr,o,len) = B.toForeignPtr bs
 
 -- | Put an arbitrary type with the Storable class constraint.
-putStorable :: Storable a => a -> Packing ()
+putStorable :: (Storable a, Packing p) => a -> p ()
 putStorable a = packCheckAct (sizeOf a) (\ptr -> poke (castPtr ptr) a)
 
 -- | Unpack a bytestring using a monadic unpack action.
@@ -359,9 +359,9 @@ tryUnpacking :: UnpackingStrict a -> ByteString -> Either E.SomeException a
 tryUnpacking action bs = unsafeDoIO $ tryUnpackingIO bs action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
-runPackingRes :: Int -> Packing a -> (a, ByteString)
+runPackingRes :: Int -> PackingStrict a -> (a, ByteString)
 runPackingRes sz action = unsafeDoIO $ runPackingIO sz action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
-runPacking :: Int -> Packing a -> ByteString
+runPacking :: Int -> PackingStrict a -> ByteString
 runPacking sz action = snd $ runPackingRes sz action

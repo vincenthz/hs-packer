@@ -28,7 +28,7 @@ tryUnpackingIO :: ByteString -> UnpackingStrict a -> IO (Either E.SomeException 
 tryUnpackingIO bs action = E.try $ runUnpackingIO bs action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
-runPackingIO :: Int -> Packing a -> IO (a, ByteString)
+runPackingIO :: Int -> PackingStrict a -> IO (a, ByteString)
 runPackingIO sz action = createUptoN sz $ \ptr -> runPackingAt ptr sz action
     where -- copy of bytestring createUptoN as it's only been added 2012-09
           createUptoN l f = do fp <- B.mallocByteString l

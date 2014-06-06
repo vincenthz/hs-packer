@@ -2,6 +2,7 @@ module Data.Packer.Family
     ( Unpacking(..)
     , unpackUnsafeAct
     , unpackCheckAct
+    , Packing(..)
     ) where
 
 import Control.Applicative
@@ -11,12 +12,10 @@ import Foreign.ForeignPtr
 import Foreign.Ptr
 import Data.Word
 
-{-
 class (Functor m, Applicative m, MonadIO m, Monad m) => Packing m where
     packCheckAct :: Int                 -- ^ number of bytes to reserve
                  -> (Ptr Word8 -> IO a) -- ^ closure to pack bytes
                  -> m a
--}
 
 class (Functor m, Applicative m, MonadIO m, Monad m) => Unpacking m where
     unpackUnsafeActRef :: Int -- ^ number of bytes
