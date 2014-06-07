@@ -17,8 +17,6 @@ import Data.Packer.Family
 import Data.Packer.Internal
 import Control.Applicative
 import Control.Monad.Trans
-import Control.Concurrent.MVar
-import Control.Monad (liftM2)
 
 import Foreign.Ptr
 import Foreign.ForeignPtr
@@ -27,19 +25,22 @@ import Data.Word
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B
 
-runPackingIncremental :: PackingPusher -> Int -> PackingIncremental () -> IO ()
+-- | run packing
+runPackingIncremental :: PackingPusher         -- ^ method to push a chunk packed data
+                      -> Int                   -- ^ maximum size of the chunk
+                      -> PackingIncremental () -- ^ packingIncremental
+                      -> IO ()
 runPackingIncremental pusher size pi = do
     fptr <- B.mallocByteString size
     withForeignPtr fptr $ \ptr -> do
         (_, PackedBuffer _ nFptr, Memory _ mLeft) <- (runPI_ pi) (PackedBuffer size fptr) pusher (Memory ptr size)
-        withForeignPtr nFptr $ \nPtr -> do
-            b <- B.createAndTrim size $ \trimedPtr -> B.memcpy trimedPtr nPtr (size - mLeft) >> return (size - mLeft)
-            pusher b
+        pusher $ B.PS nFptr 0 (size - mLeft)
 
 type PackingPusher = B.ByteString -> IO ()
 
 data PackedBuffer = PackedBuffer Int (ForeignPtr Word8)
 
+-- | Incremental packager
 data PackingIncremental a = PackingIncremental
     { runPI_ :: PackedBuffer
              -> PackingPusher
@@ -86,12 +87,16 @@ packIncrementalCheckAct :: Int -> (Ptr Word8 -> IO a) -> PackingIncremental a
 packIncrementalCheckAct n act = PackingIncremental exPackIncr
     where exPackIncr (PackedBuffer size fPtr) pusher (Memory ptr sz)
               | sz < n = do
+                  -- In the case there is not enough size in the buffer we
+                  -- create temporary buffer in order to execute the action
                   tFptr <- B.mallocByteString n
+                  -- Execute the action with the temporary pointer
                   r <- withForeignPtr tFptr act
 
+                  -- push all the temporary buffer and return the new buffer
+                  -- (if any) and the new Memory state
                   (npb, nMem) <- withForeignPtr tFptr $ \tptr -> pushAll (PackedBuffer size fPtr) pusher (Memory ptr sz) tptr n
 
-                  -- Create tmp ByteString to flush the content of the
                   return (r, npb, nMem)
               | otherwise = do
                   r <- act ptr
