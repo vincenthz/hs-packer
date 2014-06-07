@@ -7,6 +7,7 @@
 --
 module Data.Packer.Incremental.Unpacking
     ( UnpackingIncr
+    --, runUnpackingIncr
     ) where
 
 import qualified Data.ByteString as B
@@ -102,17 +103,7 @@ unpackIncrCheckActRef n act = UnpackingIncr exUnpack
                 -- copy the remaining bytes from the Memory object to a new bigger temporary buffer
                 (B.PS tfptr _ _) <- B.create n $ \ptrDst -> B.memcpy ptrDst ptr sz
                 withForeignPtr tfptr $ \tPtr -> do
-                    -- Copy what we need from next buffer in the temp buffer
-                    -- expect next buffer is enough. obviously not true.
-
-                    -- ------------ should be a loop
-                    (B.PS nfPtr nOfs nLen) <- popper
-                    next <- withForeignPtr nfPtr $ \nPtr -> do
-                        B.memcpy (tPtr `plusPtr` sz) (nPtr `plusPtr` nOfs) (n - sz)
-                        return $ Memory (nPtr `plusPtr` (nOfs + n - sz)) (nLen - sz)
-                    -- ------------------------
-
-                    -- execute act on the temporary buffer
+                    (nfPtr, next) <- fillAll popper $ Memory (tPtr `plusPtr` sz) (n - sz)
                     r <- act tfptr tPtr
 
                     -- then return the value, the new buffer fptr, and the actual memory object associated
@@ -120,5 +111,29 @@ unpackIncrCheckActRef n act = UnpackingIncr exUnpack
             | otherwise = do
                 r <- act fptr ptr
                 return (r, fptr, Memory (ptr `plusPtr` n) (sz - n))
+        -- Fill the temporary buffer with the pop'ed data, and
+        -- return the remaining data
+        fillAll :: UnpackingPopper -> Memory -> IO (ForeignPtr Word8, Memory)
+        fillAll popper (Memory tPtr left) = do
+            -- FIXME handle the case where the popper return empty data
+            (B.PS nfPtr nOfs nLen) <- popper
+            case compare nLen left of
+                EQ -> do
+                    withForeignPtr nfPtr $ \nPtr ->
+                        B.memcpy tPtr (nPtr `plusPtr` nOfs) left
+                    -- consumed all the new buffer, so pop another one.
+                    (B.PS nfPtr2 nOfs2 nLen2) <- popper
+                    ptr2 <- withForeignPtr nfPtr2 $ \nPtr2 -> return (nPtr2 `plusPtr` nOfs2)
+                    return (nfPtr2, Memory ptr2 nLen2)
+                GT -> do
+                    -- copy part of the new buffer, and return the consumed buffer (but not empty)
+                    mem <- withForeignPtr nfPtr $ \nPtr -> do
+                        B.memcpy tPtr (nPtr `plusPtr` nOfs) left
+                        return (Memory (nPtr `plusPtr` (nOfs + left)) (nLen - left))
+                    return (nfPtr, mem)
+                LT -> do
+                    -- don't have enough yet to fill the temporary buffer, so consume and recurse.
+                    withForeignPtr nfPtr $ \nPtr -> B.memcpy tPtr (nPtr `plusPtr` nOfs) nLen
+                    fillAll popper $ Memory (tPtr `plusPtr` nLen) (left - nLen)
 {-# INLINE [0] unpackIncrCheckActRef #-}
 
