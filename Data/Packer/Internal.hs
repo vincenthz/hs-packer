@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE CPP #-}
 -- |
 -- Module      : Data.Packer.Internal
 -- License     : BSD-style
@@ -17,6 +18,8 @@ module Data.Packer.Internal
     , OutOfBoundPacking(..)
     , HoleInPacking(..)
     , IsolationNotFullyConsumed(..)
+    -- * util
+    , unsafeDoIO
     ) where
 
 import Foreign.Ptr
@@ -29,6 +32,14 @@ import Control.Applicative (Alternative(..), Applicative(..), (<$>), (<*>))
 import Control.Concurrent.MVar
 import Control.Monad (when)
 import Data.Packer.Family
+
+import System.IO.Unsafe
+
+#if __GLASGOW_HASKELL__ > 704
+unsafeDoIO = unsafeDupablePerformIO
+#else
+unsafeDoIO = unsafePerformIO
+#endif
 
 -- | Represent a memory block with a ptr as beginning
 data Memory = Memory {-# UNPACK #-} !(Ptr Word8)

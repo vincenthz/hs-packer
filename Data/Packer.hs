@@ -93,14 +93,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B (memcpy, unsafeCreate, toForeignPtr, fromForeignPtr)
 import Data.Word
 import Foreign.Storable
-import System.IO.Unsafe
 import qualified Control.Exception as E
-
-#if __GLASGOW_HASKELL__ > 704
-unsafeDoIO = unsafeDupablePerformIO
-#else
-unsafeDoIO = unsafePerformIO
-#endif
 
 -- | Peek and do an action on the result. just for convenience
 {-# INLINE peekAnd #-}
