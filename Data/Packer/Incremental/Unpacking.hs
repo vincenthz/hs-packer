@@ -7,11 +7,14 @@
 --
 module Data.Packer.Incremental.Unpacking
     ( UnpackingIncr
-    --, runUnpackingIncr
+    , runUnpackingIncr
+    , runUnpackingLazy
     ) where
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B
+import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Internal as L (chunk)
 import Foreign.Ptr
 import Foreign.ForeignPtr
 import Data.Data
@@ -23,6 +26,7 @@ import Control.Concurrent.MVar
 import Control.Monad (when)
 import Data.Packer.Family
 import Data.Packer.Internal
+import System.IO.Unsafe
 
 type UnpackingPopper = IO B.ByteString
 
@@ -32,6 +36,24 @@ newtype UnpackingIncr a = UnpackingIncr
                         -> ForeignPtr Word8 -- ^ current buffer fptr
                         -> Memory           -- ^ current state in the memory
                         -> IO (a, ForeignPtr Word8, Memory) }
+
+runUnpackingIncr :: UnpackingPopper
+                 -> UnpackingIncr a
+                 -> IO a
+runUnpackingIncr popper unpacker = do
+    (B.PS fptr ofs len) <- popper
+    withForeignPtr fptr $ \ptr -> do
+        (r, _, _) <- runUnpackingIncr_ unpacker popper fptr (Memory (ptr `plusPtr` ofs) len)
+        return r
+
+runUnpackingLazy :: L.ByteString
+                 -> UnpackingIncr a
+                 -> a
+runUnpackingLazy lbs f = unsafeDoIO (newMVar (L.toChunks lbs) >>= \var -> runUnpackingIncr (popper var) f)
+  where popper :: MVar [B.ByteString] -> IO B.ByteString
+        popper mvar = modifyMVar mvar pop
+        pop (x:xs) = return (xs, x)
+        pop []     = return ([], B.empty)
 
 instance Monad UnpackingIncr where
     return = returnUnpacking
@@ -47,23 +69,11 @@ instance Applicative UnpackingIncr where
     pure  = returnUnpacking
     (<*>) = apUnpacking
 
-{-
-instance Alternative UnpackingStrict where
-    empty = error "Data.Packer (Alternative): empty"
-    f <|> g = UnpackingStrict $ \cst st ->
-        tryRunUnpacking f cst st >>= either (const $ runUnpackingStrict_ g cst st) return
--}
-
 instance Unpacking UnpackingIncr where
     unpackUnsafeActRef = unpackIncrUnsafeActRef
     unpackCheckActRef = unpackIncrCheckActRef
 
     unpackIsolate = undefined
-
-{-
-tryRunUnpacking :: UnpackingStrict a -> (ForeignPtr Word8, Memory) -> Memory -> IO (Either SomeException (a,Memory))
-tryRunUnpacking f cst st = try $ runUnpackingStrict_ f cst st
--}
 
 bindUnpacking :: UnpackingIncr a -> (a -> UnpackingIncr b) -> UnpackingIncr b
 bindUnpacking m1 m2 = UnpackingIncr $ \popper fptr st -> do
