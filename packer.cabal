@@ -24,6 +24,7 @@ Library
   Other-modules:     Data.Packer.Internal
                      Data.Packer.Strict.Packing
                      Data.Packer.Strict.Unpacking
+                     Data.Packer.Incremental.Packing
                      Data.Packer.Incremental.Unpacking
                      Data.Packer.Family
                      Data.Packer.IEEE754
