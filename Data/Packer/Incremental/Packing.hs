@@ -9,7 +9,8 @@
 --
 {-# LANGUAGE CPP #-}
 module Data.Packer.Incremental.Packing
-    (
+    ( PackingIncremental
+    , runPackingIncremental
     ) where
 
 import Data.Packer.Family
@@ -25,6 +26,15 @@ import Data.Data
 import Data.Word
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B
+
+runPackingIncremental :: PackingPusher -> Int -> PackingIncremental () -> IO ()
+runPackingIncremental pusher size pi = do
+    fptr <- B.mallocByteString size
+    withForeignPtr fptr $ \ptr -> do
+        (_, PackedBuffer _ nFptr, Memory _ mLeft) <- (runPI_ pi) (PackedBuffer size fptr) pusher (Memory ptr size)
+        withForeignPtr nFptr $ \nPtr -> do
+            b <- B.createAndTrim size $ \trimedPtr -> B.memcpy trimedPtr nPtr (size - mLeft) >> return (size - mLeft)
+            pusher b
 
 type PackingPusher = B.ByteString -> IO ()
 
