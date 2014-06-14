@@ -151,6 +151,7 @@ main = defaultMain
                                                     (runUnpacking (unpackSetPosition 2) (B.singleton 1)))
             , testCase "unpacking set pos after" (assertException "unpacking position" (\(OutOfBoundUnpacking _ _) -> Just ())
                                                     (runUnpacking (unpackSetPosition (-1)) (B.singleton 1)))
+            , testCase "unpacking set pos end" (runUnpacking (unpackSetPosition 0) (B.empty) @=? ())
             , testCase "unpacking isolate" (runUnpacking (isolate 2 (getBytes 2) >>= \i -> getWord8 >>= \r -> return (i,r)) (B.pack [1,2,3]) @=? (B.pack [1,2], 3))
             , testCase "unpacking isolate out of bounds" $
                 assertException "unpacking isolate" (\(OutOfBoundUnpacking _ _) -> Just ())
