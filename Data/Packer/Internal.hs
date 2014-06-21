@@ -197,7 +197,7 @@ unpackCheckAct n act = unpackCheckActRef n (\_ -> act)
 -- This is useful to skip bytes or when using absolute offsets from a header or some such.
 unpackSetPosition :: Int -> Unpacking ()
 unpackSetPosition pos = Unpacking $ \(fptr, iniBlock@(Memory iniPtr sz)) _ -> do
-    when (pos < 0 || pos >= sz) (throwIO $ OutOfBoundUnpacking pos 0)
+    when (pos < 0 || pos > sz) (throwIO $ OutOfBoundUnpacking pos 0)
     return ((), Memory (iniPtr `plusPtr` pos) (sz-pos))
 
 -- | Get the position in the memory block.
