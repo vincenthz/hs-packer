@@ -29,6 +29,8 @@ module Data.Packer
     , unpackSkip
     , unpackSetPosition
     , unpackGetPosition
+    , remainingBytes
+    , isEmpty
     , getWord8
     , getWord16
     , getWord16LE
@@ -240,6 +242,14 @@ getStorable = get_ undefined
 -- this function will raises an exception
 isolate :: Int -> Unpacking a -> Unpacking a
 isolate n subUnpacker = unpackIsolate n subUnpacker
+
+-- | Return the number of remaining bytes.
+remainingBytes :: Unpacking Int
+remainingBytes = unpackGetNbRemaining
+
+-- | Return whether all the bytes are consumed or not.
+isEmpty :: Unpacking Bool
+isEmpty = (== 0) <$> unpackGetNbRemaining
 
 -- | Put a Word8
 putWord8 :: Word8 -> Packing ()
