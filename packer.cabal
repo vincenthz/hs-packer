@@ -31,11 +31,9 @@ Test-Suite test-packer
   Main-Is:           Tests.hs
   Build-depends:     base >= 4 && < 5
                    , bytestring
-                   , HUnit
-                   , QuickCheck >= 2
-                   , test-framework >= 0.3.3
-                   , test-framework-quickcheck2 >= 0.2.9
-                   , test-framework-hunit
+                   , tasty
+                   , tasty-quickcheck
+                   , tasty-hunit
                    , packer
 
 source-repository head

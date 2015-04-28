@@ -1,12 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-import Test.Framework (defaultMain, testGroup)
-import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.Framework.Providers.HUnit (testCase)
+import Test.Tasty (defaultMain, testGroup)
 
-import Test.QuickCheck
-import Test.HUnit
+import Test.Tasty.QuickCheck
+import Test.Tasty.HUnit
 import Control.Applicative ((<$>))
 import Control.Monad
 import Control.Exception
@@ -139,7 +137,7 @@ assertException msg filterE act =
     handleJust filterE (\_ -> return ()) (evaluate act >> assertFailure (msg ++ " didn't raise the proper exception"))
 
 main :: IO ()
-main = defaultMain
+main = defaultMain $ testGroup "packer"
     [ testGroup "serialization"
         [ testGroup "basic cases"
             [ testCase "packing 4 bytes" (runPacking 4 (mapM_ putWord8 [1,2,3,4]) @=? B.pack [1,2,3,4])
