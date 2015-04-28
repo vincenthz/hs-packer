@@ -80,6 +80,35 @@ instance Arbitrary DataStream where
             >>= \sz -> replicateM sz arbitrary
             >>= return . DataStream
 
+newtype DataBytes = DataBytes B.ByteString
+  deriving (Show, Eq)
+instance Arbitrary DataBytes where
+    arbitrary = DataBytes <$> arbitraryBS
+
+test_property_hole :: DataBytes -> Bool
+test_property_hole dbytes =
+    dbytes == r2
+  where
+    p1 = runPacker dbytes
+    r1 = runParser p1
+    p2 = runPacker r1
+    r2 = runParser p2
+
+    runPacker :: DataBytes -> B.ByteString
+    runPacker (DataBytes bs) = runPacking (B.length bs + 4) (packer bs)
+    runParser :: B.ByteString -> DataBytes
+    runParser = runUnpacking parser
+
+    packer :: B.ByteString -> Packing ()
+    packer bs = do
+        hsize <- putHoleWord32LE
+        putBytes bs
+        fillHole hsize (fromIntegral $ B.length bs)
+    parser :: Unpacking DataBytes
+    parser = do
+        size <- fromIntegral <$> getWord32LE
+        DataBytes <$> getBytes size
+
 packDataStream (DataStream atoms) = runPacking (foldl sumLen 0 atoms) (mapM_ process atoms)
     where process :: DataAtom -> Packing ()
           process (W8 w)    = putWord8 w
@@ -160,5 +189,6 @@ main = defaultMain $ testGroup "packer"
             ]
         , testGroup "endianness cases" $ concatMap toEndianCase endiannessCases
         , testProperty "unpacking.packing=id" (\ds -> unpackDataStream ds (packDataStream ds) == ds)
+        , testProperty "holes" test_property_hole
         ]
     ]
