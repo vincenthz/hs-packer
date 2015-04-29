@@ -53,9 +53,13 @@ module Data.Packer
     -- * Packing functions
     , packGetPosition
     , putWord8
+    , putHoleWord8
     , putWord16
     , putWord16LE
     , putWord16BE
+    , putHoleWord16
+    , putHoleWord16LE
+    , putHoleWord16BE
     , putWord32
     , putWord32LE
     , putWord32BE
@@ -245,6 +249,10 @@ isolate n subUnpacker = unpackIsolate n subUnpacker
 putWord8 :: Word8 -> Packing ()
 putWord8 w = packCheckAct 1 (\ptr -> poke (castPtr ptr) w)
 
+-- | Put a Word8 Hole
+putHoleWord8 :: Packing (Hole Word8)
+putHoleWord8 = packHole 1 (\ptr w -> poke (castPtr ptr) w)
+
 -- | Put a Word16 in the host endianess.
 --
 -- It's recommended to use an explicit endianness (LE or BE)
@@ -260,6 +268,20 @@ putWord16LE w = putWord16 (le16Host w)
 -- | Put a Word16 serialized in big endian.
 putWord16BE :: Word16 -> Packing ()
 putWord16BE w = putWord16 (be16Host w)
+
+-- | Put a Word16 Hole
+putHoleWord16_ :: (Word16 -> Word16) -> Packing (Hole Word16)
+putHoleWord16_ f = packHole 2 (\ptr w -> poke (castPtr ptr) (f w))
+
+putHoleWord16, putHoleWord16BE, putHoleWord16LE :: Packing (Hole Word16)
+-- | Put a Word16 Hole in host endian
+putHoleWord16 = putHoleWord16_ id
+
+-- | Put a Word16 Hole in big endian
+putHoleWord16BE = putHoleWord16_ be16Host
+
+-- | Put a Word16 Hole in little endian
+putHoleWord16LE = putHoleWord16_ le16Host
 
 -- | Put a Word32 in the host endianess.
 --

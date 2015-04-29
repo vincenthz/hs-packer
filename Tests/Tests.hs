@@ -75,63 +75,127 @@ instance Arbitrary DataAtom where
         , Bytes <$> arbitraryBS
         ]
 
+putAtom :: DataAtom -> Packing ()
+putAtom (W8 w)    = putWord8 w
+putAtom (W16 w)   = putWord16 w
+putAtom (W32 w)   = putWord32 w
+putAtom (W64 w)   = putWord64 w
+putAtom (W16LE w) = putWord16LE w
+putAtom (W32LE w) = putWord32LE w
+putAtom (W64LE w) = putWord64LE w
+putAtom (W16BE w) = putWord16BE w
+putAtom (W32BE w) = putWord32BE w
+putAtom (W64BE w) = putWord64BE w
+putAtom (F32LE w) = putFloat32LE w
+putAtom (F32BE w) = putFloat32BE w
+putAtom (F64LE w) = putFloat64LE w
+putAtom (F64BE w) = putFloat64BE w
+putAtom (Bytes b) = putBytes b
+
+getAtom :: DataAtom -> Unpacking DataAtom
+getAtom (W8 _)    = W8    <$> getWord8
+getAtom (W16 _)   = W16   <$> getWord16
+getAtom (W32 _)   = W32   <$> getWord32
+getAtom (W64 _)   = W64   <$> getWord64
+getAtom (W16LE _) = W16LE <$> getWord16LE
+getAtom (W32LE _) = W32LE <$> getWord32LE
+getAtom (W64LE _) = W64LE <$> getWord64LE
+getAtom (W16BE _) = W16BE <$> getWord16BE
+getAtom (W32BE _) = W32BE <$> getWord32BE
+getAtom (W64BE _) = W64BE <$> getWord64BE
+getAtom (F32LE _) = F32LE <$> getFloat32LE
+getAtom (F32BE _) = F32BE <$> getFloat32BE
+getAtom (F64LE _) = F64LE <$> getFloat64LE
+getAtom (F64BE _) = F64BE <$> getFloat64BE
+getAtom (Bytes b) = Bytes <$> getBytes (B.length b)
+
+getAtomLength :: DataAtom -> Int
+getAtomLength (W8 _)    = 1
+getAtomLength (W16 _)   = 2
+getAtomLength (W16LE _) = 2
+getAtomLength (W16BE _) = 2
+getAtomLength (W32 _)   = 4
+getAtomLength (W32LE _) = 4
+getAtomLength (W32BE _) = 4
+getAtomLength (F32LE _) = 4
+getAtomLength (F32BE _) = 4
+getAtomLength (W64 _)   = 8
+getAtomLength (W64LE _) = 8
+getAtomLength (W64BE _) = 8
+getAtomLength (F64LE _) = 8
+getAtomLength (F64BE _) = 8
+getAtomLength (Bytes b) = B.length b
+
+test_property_hole_pack_unpack :: DataAtom -> Bool
+test_property_hole_pack_unpack a =
+    a == r2
+  where
+    p1 = runPacker a
+    r1 = runParser p1
+    p2 = runPacker r1
+    r2 = runParser p2
+
+    runPacker :: DataAtom -> B.ByteString
+    runPacker a = runPacking (getAtomLength a) (packer a)
+    runParser :: B.ByteString -> DataAtom
+    runParser = runUnpacking (getAtom a)
+
+    packer :: DataAtom -> Packing ()
+    packer (W8 w)    = putHoleWord8 >>= flip fillHole w
+    packer (W16 w)   = putHoleWord16 >>= flip fillHole w
+    packer (W32 w)   = putHoleWord32 >>= flip fillHole w
+    packer (W64 w)   = putHoleWord64 >>= flip fillHole w
+    packer (W16LE w) = putHoleWord16LE >>= flip fillHole w
+    packer (W32LE w) = putHoleWord32LE >>= flip fillHole w
+    packer (W64LE w) = putHoleWord64LE >>= flip fillHole w
+    packer (W16BE w) = putHoleWord16BE >>= flip fillHole w
+    packer (W32BE w) = putHoleWord32BE >>= flip fillHole w
+    packer (W64BE w) = putHoleWord64BE >>= flip fillHole w
+    packer (F32LE w) = putFloat32LE w
+    packer (F32BE w) = putFloat32BE w
+    packer (F64LE w) = putFloat64LE w
+    packer (F64BE w) = putFloat64BE w
+    packer (Bytes b) = putBytes b
+
 instance Arbitrary DataStream where
     arbitrary = choose (0,2048)
             >>= \sz -> replicateM sz arbitrary
             >>= return . DataStream
 
-packDataStream (DataStream atoms) = runPacking (foldl sumLen 0 atoms) (mapM_ process atoms)
-    where process :: DataAtom -> Packing ()
-          process (W8 w)    = putWord8 w
-          process (W16 w)   = putWord16 w
-          process (W32 w)   = putWord32 w
-          process (W64 w)   = putWord64 w
-          process (W16LE w) = putWord16LE w
-          process (W32LE w) = putWord32LE w
-          process (W64LE w) = putWord64LE w
-          process (W16BE w) = putWord16BE w
-          process (W32BE w) = putWord32BE w
-          process (W64BE w) = putWord64BE w
-          process (Bytes b) = putBytes b
-          process (F32LE w) = putFloat32LE w
-          process (F32BE w) = putFloat32BE w
-          process (F64LE w) = putFloat64LE w
-          process (F64BE w) = putFloat64BE w
-
-          sumLen a (W8 _)    = a + 1
-          sumLen a (W16 _)   = a + 2
-          sumLen a (W16LE _) = a + 2
-          sumLen a (W16BE _) = a + 2
-          sumLen a (W32 _)   = a + 4
-          sumLen a (W32LE _) = a + 4
-          sumLen a (W32BE _) = a + 4
-          sumLen a (F32LE _) = a + 4
-          sumLen a (F32BE _) = a + 4
-          sumLen a (F64LE _) = a + 8
-          sumLen a (F64BE _) = a + 8
-          sumLen a (W64 _)   = a + 8
-          sumLen a (W64LE _) = a + 8
-          sumLen a (W64BE _) = a + 8
-          sumLen a (Bytes b) = a + B.length b
+packDataStream (DataStream atoms) = runPacking (foldl sumLen 0 atoms) (mapM_ putAtom atoms)
+    where sumLen a at = a + getAtomLength at
 
 unpackDataStream :: DataStream -> B.ByteString -> DataStream
-unpackDataStream (DataStream atoms) bs = DataStream $ runUnpacking (mapM process atoms) bs
-    where process :: DataAtom -> Unpacking DataAtom
-          process (W8 _)    = W8    <$> getWord8
-          process (W16 _)   = W16   <$> getWord16
-          process (W32 _)   = W32   <$> getWord32
-          process (W64 _)   = W64   <$> getWord64
-          process (W16LE _) = W16LE <$> getWord16LE
-          process (W32LE _) = W32LE <$> getWord32LE
-          process (W64LE _) = W64LE <$> getWord64LE
-          process (W16BE _) = W16BE <$> getWord16BE
-          process (W32BE _) = W32BE <$> getWord32BE
-          process (W64BE _) = W64BE <$> getWord64BE
-          process (F32LE _) = F32LE <$> getFloat32LE
-          process (F32BE _) = F32BE <$> getFloat32BE
-          process (F64LE _) = F64LE <$> getFloat64LE
-          process (F64BE _) = F64BE <$> getFloat64BE
-          process (Bytes b) = Bytes <$> getBytes (B.length b)
+unpackDataStream (DataStream atoms) bs = DataStream $ runUnpacking (mapM getAtom atoms) bs
+
+newtype DataBytes = DataBytes B.ByteString
+  deriving (Show, Eq)
+instance Arbitrary DataBytes where
+    arbitrary = DataBytes <$> arbitraryBS
+
+test_property_hole :: DataBytes -> Bool
+test_property_hole dbytes =
+    dbytes == r2
+  where
+    p1 = runPacker dbytes
+    r1 = runParser p1
+    p2 = runPacker r1
+    r2 = runParser p2
+
+    runPacker :: DataBytes -> B.ByteString
+    runPacker (DataBytes bs) = runPacking (B.length bs + 4) (packer bs)
+    runParser :: B.ByteString -> DataBytes
+    runParser = runUnpacking parser
+
+    packer :: B.ByteString -> Packing ()
+    packer bs = do
+        hsize <- putHoleWord32LE
+        putBytes bs
+        fillHole hsize (fromIntegral $ B.length bs)
+    parser :: Unpacking DataBytes
+    parser = do
+        size <- fromIntegral <$> getWord32LE
+        DataBytes <$> getBytes size
 
 assertException msg filterE act =
     handleJust filterE (\_ -> return ()) (evaluate act >> assertFailure (msg ++ " didn't raise the proper exception"))
@@ -160,5 +224,7 @@ main = defaultMain $ testGroup "packer"
             ]
         , testGroup "endianness cases" $ concatMap toEndianCase endiannessCases
         , testProperty "unpacking.packing=id" (\ds -> unpackDataStream ds (packDataStream ds) == ds)
+        , testProperty "holes" test_property_hole
+        , testProperty "holes" test_property_hole_pack_unpack
         ]
     ]
