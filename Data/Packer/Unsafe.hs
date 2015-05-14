@@ -18,7 +18,7 @@ import Data.Word
 import Data.Packer.Internal
 import Foreign.Ptr
 import Foreign.ForeignPtr
-import Control.Monad.State
+import Control.Monad
 import Control.Exception
 import Control.Concurrent.MVar (takeMVar, newMVar)
 

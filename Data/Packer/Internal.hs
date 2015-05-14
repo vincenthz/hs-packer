@@ -42,7 +42,7 @@ import Foreign.ForeignPtr
 import Data.Data
 import Data.Word
 import Control.Exception (Exception, throwIO, try, SomeException)
-import Control.Monad.Trans
+import Control.Monad.IO.Class
 import Control.Applicative (Alternative(..), Applicative(..), (<$>), (<*>))
 import Control.Concurrent.MVar
 import Control.Monad (when)

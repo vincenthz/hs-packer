@@ -17,7 +17,7 @@ Library
   Build-Depends:     base >= 3 && < 5
                    , bytestring
                    , ghc-prim
-                   , mtl
+                   , transformers
   Exposed-modules:   Data.Packer
                      Data.Packer.Unsafe
                      Data.Packer.IO
