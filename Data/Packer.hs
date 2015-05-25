@@ -40,10 +40,8 @@ module Data.Packer
     , getWord64LE
     , getWord64BE
     , getBytes
-    , getBytesCopy
     , getBytesWhile
     , getRemaining
-    , getRemainingCopy
     , getStorable
     , getFloat32LE
     , getFloat32BE
@@ -189,28 +187,13 @@ getFloat64BE :: Unpacking Double
 getFloat64BE = wordToDouble <$> getWord64BE
 
 -- | Get a number of bytes in bytestring format.
---
--- The original block of memory is expected to live for the life of this bytestring,
--- and this is done so by holding the original ForeignPtr.
 getBytes :: ByteArray bytes => Int -> Unpacking bytes
 getBytes n = unpackCheckActRef n $ \ptr ->
     B.create n (\bytesPtr -> B.memCopy bytesPtr ptr n)
-{-# DEPRECATED getBytes "deprecated as this function now performs a copy" #-}
-
--- | Similar to 'getBytes' but copy the bytes to a new bytestring without making reference
--- to the original memory after the copy. this allow the original block of memory to go away.
-getBytesCopy :: ByteArray bytes => Int -> Unpacking bytes
-getBytesCopy = getBytes
 
 -- | Get the remaining bytes.
 getRemaining :: ByteArray bytes => Unpacking bytes
 getRemaining = unpackGetNbRemaining >>= getBytes
-{-# DEPRECATED getRemaining "deprecated as this function now performs a copy" #-}
-
--- | Get the remaining bytes but copy the bytestring and drop any
--- reference from the original function.
-getRemainingCopy :: ByteArray bytes => Unpacking bytes
-getRemainingCopy = getRemaining
 
 -- | Get a number of bytes until in bytestring format.
 --
