@@ -14,7 +14,7 @@ module Data.Packer.Internal
     ( Packing(..)
     , Hole
     , Unpacking(..)
-    , Memory(..)
+    , MemView(..)
     -- * exceptions
     , OutOfBoundUnpacking(..)
     , OutOfBoundPacking(..)
@@ -38,7 +38,6 @@ module Data.Packer.Internal
     ) where
 
 import Foreign.Ptr
-import Foreign.ForeignPtr
 import Data.Data
 import Data.Word
 import Control.Exception (Exception, throwIO, try, SomeException)
@@ -47,12 +46,14 @@ import Control.Applicative (Alternative(..), Applicative(..), (<$>), (<*>))
 import Control.Concurrent.MVar
 import Control.Monad (when)
 
--- | Represent a memory block with a ptr as beginning
-data Memory = Memory {-# UNPACK #-} !(Ptr Word8)
-                     {-# UNPACK #-} !Int
+import Data.ByteArray (MemView(..))
+import qualified Data.ByteArray as B
+
+memViewPlus :: MemView -> Int -> MemView
+memViewPlus (MemView p len) n = MemView (p `plusPtr` n) (len - n)
 
 -- | Packing monad
-newtype Packing a = Packing { runPacking_ :: (Ptr Word8, MVar Int) -> Memory -> IO (a, Memory) }
+newtype Packing a = Packing { runPacking_ :: (Ptr Word8, MVar Int) -> MemView -> IO (a, MemView) }
 
 instance Monad Packing where
     return = returnPacking
@@ -87,7 +88,7 @@ apPacking fm m = fm >>= \p -> m >>= \r2 -> return (p r2)
 {-# INLINE [0] apPacking #-}
 
 -- | Unpacking monad
-newtype Unpacking a = Unpacking { runUnpacking_ :: (ForeignPtr Word8, Memory) -> Memory -> IO (a, Memory) }
+newtype Unpacking a = Unpacking { runUnpacking_ :: MemView -> MemView -> IO (a, MemView) }
 
 instance Monad Unpacking where
     return = returnUnpacking
@@ -108,7 +109,7 @@ instance Alternative Unpacking where
     f <|> g = Unpacking $ \cst st ->
         tryRunUnpacking f cst st >>= either (const $ runUnpacking_ g cst st) return
 
-tryRunUnpacking :: Unpacking a -> (ForeignPtr Word8, Memory) -> Memory -> IO (Either SomeException (a,Memory))
+tryRunUnpacking :: Unpacking a -> MemView -> MemView -> IO (Either SomeException (a,MemView))
 tryRunUnpacking f cst st = try $ runUnpacking_ f cst st
 
 bindUnpacking :: Unpacking a -> (a -> Unpacking b) -> Unpacking b
@@ -156,20 +157,20 @@ instance Exception IsolationNotFullyConsumed
 -- | run an action to transform a number of bytes into a 'a'
 -- and increment the pointer by number of bytes.
 unpackUnsafeActRef :: Int -- ^ number of bytes
-                   -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
+                   -> (Ptr Word8 -> IO a)
                    -> Unpacking a
-unpackUnsafeActRef n act = Unpacking $ \(fptr, iniBlock) st@(Memory ptr sz) -> do
-    r <- act fptr ptr
-    return (r, Memory (ptr `plusPtr` n) (sz - n))
+unpackUnsafeActRef n act = Unpacking $ \_ memView@(MemView ptr sz) -> do
+    r <- act ptr
+    return (r, memViewPlus memView n)
 
 -- | similar 'unpackUnsafeActRef' but does boundary checking.
 unpackCheckActRef :: Int
-                  -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
+                  -> (Ptr Word8 -> IO a)
                   -> Unpacking a
-unpackCheckActRef n act = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memory ptr sz) -> do
+unpackCheckActRef n act = Unpacking $ \(MemView iniPtr _) memView@(MemView ptr sz) -> do
     when (sz < n) (throwIO $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
-    r <- act fptr ptr
-    return (r, Memory (ptr `plusPtr` n) (sz - n))
+    r <- act ptr
+    return (r, memViewPlus memView n)
 {-# INLINE [0] unpackCheckActRef #-}
 
 -- | Isolate a number of bytes to run an unpacking operation.
@@ -178,50 +179,50 @@ unpackCheckActRef n act = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memor
 unpackIsolate :: Int
               -> Unpacking a
               -> Unpacking a
-unpackIsolate n sub = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memory ptr sz) -> do
+unpackIsolate n sub = Unpacking $ \iniBlock@(MemView iniPtr _) memView@(MemView ptr sz) -> do
     when (sz < n) (throwIO $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
-    (r, Memory newPtr subLeft) <- (runUnpacking_ sub) (fptr,iniBlock) (Memory ptr n)
+    (r, MemView newPtr subLeft) <- (runUnpacking_ sub) iniBlock (MemView ptr n)
     when (subLeft > 0) $ (throwIO $ IsolationNotFullyConsumed n subLeft)
-    return (r, Memory newPtr (sz - n))
+    return (r, MemView newPtr (sz - n))
 
 -- | Similar to unpackUnsafeActRef except that it throw the foreign ptr.
 unpackUnsafeAct :: Int -> (Ptr Word8 -> IO a) -> Unpacking a
-unpackUnsafeAct n act = unpackUnsafeActRef n (\_ -> act)
+unpackUnsafeAct = unpackUnsafeActRef
 
 -- | Similar to unpackCheckActRef except that it throw the foreign ptr.
 unpackCheckAct :: Int -> (Ptr Word8 -> IO a) -> Unpacking a
-unpackCheckAct n act = unpackCheckActRef n (\_ -> act)
+unpackCheckAct = unpackCheckActRef
 {-# INLINE [0] unpackCheckAct #-}
 
 -- | Set the new position from the beginning in the memory block.
 -- This is useful to skip bytes or when using absolute offsets from a header or some such.
 unpackSetPosition :: Int -> Unpacking ()
-unpackSetPosition pos = Unpacking $ \(fptr, iniBlock@(Memory iniPtr sz)) _ -> do
+unpackSetPosition pos = Unpacking $ \(iniBlock@(MemView _ sz)) _ -> do
     when (pos < 0 || pos > sz) (throwIO $ OutOfBoundUnpacking pos 0)
-    return ((), Memory (iniPtr `plusPtr` pos) (sz-pos))
+    return ((), memViewPlus iniBlock pos)
 
 -- | Get the position in the memory block.
 unpackGetPosition :: Unpacking Int
 unpackGetPosition = Unpacking $
-    \(_, (Memory iniPtr _)) st@(Memory ptr _) -> return (ptr `minusPtr` iniPtr, st)
+    \(MemView iniPtr _) st@(MemView ptr _) -> return (ptr `minusPtr` iniPtr, st)
 
 -- | Return the number of remaining bytes
 unpackGetNbRemaining :: Unpacking Int
-unpackGetNbRemaining = Unpacking $ \_ st@(Memory _ sz) -> return (sz,st)
+unpackGetNbRemaining = Unpacking $ \_ st@(MemView _ sz) -> return (sz,st)
 
 -- | Allow to look into the memory.
 -- This is inherently unsafe
 unpackLookahead :: (Ptr Word8 -> Int -> IO a) -- ^ callback with current position and byte left
                 -> Unpacking a
 unpackLookahead f = Unpacking $
-    \_ st@(Memory ptr sz) -> f ptr sz >>= \a -> return (a, st)
+    \_ st@(MemView ptr sz) -> f ptr sz >>= \a -> return (a, st)
 
 -- | run a pack action on the internal packed buffer.
 packCheckAct :: Int -> (Ptr Word8 -> IO a) -> Packing a
-packCheckAct n act = Packing $ \_ (Memory ptr sz) -> do
+packCheckAct n act = Packing $ \_ (MemView ptr sz) -> do
     when (sz < n) (throwIO $ OutOfBoundPacking sz n)
     r <- act ptr
-    return (r, Memory (ptr `plusPtr` n) (sz - n))
+    return (r, MemView (ptr `plusPtr` n) (sz - n))
 {-# INLINE [0] packCheckAct #-}
 
 -- | modify holes
@@ -230,7 +231,7 @@ modifyHoles f = Packing $ \(_, holesMVar) mem -> modifyMVar_ holesMVar (\v -> re
 
 -- | Get the position in the memory block.
 packGetPosition :: Packing Int
-packGetPosition = Packing $ \(iniPtr, _) mem@(Memory ptr _) -> return (ptr `minusPtr` iniPtr, mem)
+packGetPosition = Packing $ \(iniPtr, _) mem@(MemView ptr _) -> return (ptr `minusPtr` iniPtr, mem)
 
 -- | A Hole represent something that need to be filled
 -- later, for example a CRC, a prefixed size, etc.

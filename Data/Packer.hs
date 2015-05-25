@@ -85,17 +85,18 @@ import Control.Applicative
 import Data.Packer.Internal
 import Data.Packer.Unsafe
 import Data.Packer.IO
-import Data.Packer.Endian
 import Data.Packer.IEEE754
 import Foreign.Ptr
 import Foreign.ForeignPtr
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Internal as B (memcpy, unsafeCreate, toForeignPtr, fromForeignPtr)
 import Data.Word
 import Foreign.Storable
 import System.IO.Unsafe
 import qualified Control.Exception as E
+
+import Data.ByteArray (ByteArray(..), ByteArrayAccess(..))
+import qualified Data.ByteArray as B
+import qualified Data.Memory.PtrMethods as B
+import Data.Memory.Endian
 
 #if __GLASGOW_HASKELL__ > 704
 unsafeDoIO = unsafeDupablePerformIO
@@ -127,12 +128,12 @@ getWord16 = unpackCheckAct 2 (peek . castPtr)
 
 -- | Get a Word16 serialized in little endian.
 getWord16LE :: Unpacking Word16
-getWord16LE = unpackCheckAct 2 (peekAnd le16Host . castPtr)
+getWord16LE = unpackCheckAct 2 (peekAnd fromLE . castPtr)
 {-# INLINE getWord16LE #-}
 
 -- | Get a Word16 serialized in big endian.
 getWord16BE :: Unpacking Word16
-getWord16BE = unpackCheckAct 2 (peekAnd be16Host . castPtr)
+getWord16BE = unpackCheckAct 2 (peekAnd fromBE . castPtr)
 {-# INLINE getWord16BE #-}
 
 -- | Get a Word32 in the host endianess.
@@ -145,12 +146,12 @@ getWord32 = unpackCheckAct 4 (peek . castPtr)
 
 -- | Get a Word32 serialized in little endian.
 getWord32LE :: Unpacking Word32
-getWord32LE = unpackCheckAct 4 (peekAnd le32Host . castPtr)
+getWord32LE = unpackCheckAct 4 (peekAnd fromLE . castPtr)
 {-# INLINE getWord32LE #-}
 
 -- | Get a Word32 serialized in big endian.
 getWord32BE :: Unpacking Word32
-getWord32BE = unpackCheckAct 4 (peekAnd be32Host . castPtr)
+getWord32BE = unpackCheckAct 4 (peekAnd fromBE . castPtr)
 {-# INLINE getWord32BE #-}
 
 -- | Get a Word64 in the host endianess.
@@ -163,12 +164,12 @@ getWord64 = unpackCheckAct 8 (peek . castPtr)
 
 -- | Get a Word64 serialized in little endian.
 getWord64LE :: Unpacking Word64
-getWord64LE = unpackCheckAct 8 (peekAnd le64Host . castPtr)
+getWord64LE = unpackCheckAct 8 (peekAnd fromLE . castPtr)
 {-# INLINE getWord64LE #-}
 
 -- | Get a Word64 serialized in big endian.
 getWord64BE :: Unpacking Word64
-getWord64BE = unpackCheckAct 8 (peekAnd be64Host . castPtr)
+getWord64BE = unpackCheckAct 8 (peekAnd fromBE . castPtr)
 {-# INLINE getWord64BE #-}
 
 -- | Read a Float in little endian IEEE-754 format
@@ -191,29 +192,30 @@ getFloat64BE = wordToDouble <$> getWord64BE
 --
 -- The original block of memory is expected to live for the life of this bytestring,
 -- and this is done so by holding the original ForeignPtr.
-getBytes :: Int -> Unpacking ByteString
-getBytes n = unpackCheckActRef n $ \fptr ptr -> do
-                    o <- withForeignPtr fptr $ \origPtr -> return (ptr `minusPtr` origPtr)
-                    return $ B.fromForeignPtr fptr o n
+getBytes :: ByteArray bytes => Int -> Unpacking bytes
+getBytes n = unpackCheckActRef n $ \ptr ->
+    B.create n (\bytesPtr -> B.memCopy bytesPtr ptr n)
+{-# DEPRECATED getBytes "deprecated as this function now performs a copy" #-}
 
 -- | Similar to 'getBytes' but copy the bytes to a new bytestring without making reference
 -- to the original memory after the copy. this allow the original block of memory to go away.
-getBytesCopy :: Int -> Unpacking ByteString
-getBytesCopy n = B.copy <$> getBytes n
+getBytesCopy :: ByteArray bytes => Int -> Unpacking bytes
+getBytesCopy = getBytes
 
 -- | Get the remaining bytes.
-getRemaining :: Unpacking ByteString
+getRemaining :: ByteArray bytes => Unpacking bytes
 getRemaining = unpackGetNbRemaining >>= getBytes
+{-# DEPRECATED getRemaining "deprecated as this function now performs a copy" #-}
 
 -- | Get the remaining bytes but copy the bytestring and drop any
 -- reference from the original function.
-getRemainingCopy :: Unpacking ByteString
-getRemainingCopy = B.copy <$> getRemaining
+getRemainingCopy :: ByteArray bytes => Unpacking bytes
+getRemainingCopy = getRemaining
 
 -- | Get a number of bytes until in bytestring format.
 --
 -- this could be made more efficient
-getBytesWhile :: (Word8 -> Bool) -> Unpacking (Maybe ByteString)
+getBytesWhile :: ByteArray bytes => (Word8 -> Bool) -> Unpacking (Maybe bytes)
 getBytesWhile predicate = unpackLookahead searchEnd >>= \mn -> maybe (return Nothing) (\n -> Just <$> getBytes n) mn
     where searchEnd :: Ptr Word8 -> Int -> IO (Maybe Int)
           searchEnd ptr sz = loop 0
@@ -263,25 +265,28 @@ putWord16 w = packCheckAct 2 (\ptr -> poke (castPtr ptr) w)
 
 -- | Put a Word16 serialized in little endian.
 putWord16LE :: Word16 -> Packing ()
-putWord16LE w = putWord16 (le16Host w)
+putWord16LE w = putStorable (toLE w)
 
 -- | Put a Word16 serialized in big endian.
 putWord16BE :: Word16 -> Packing ()
-putWord16BE w = putWord16 (be16Host w)
+putWord16BE w = putStorable (toBE w)
+
+putSizedHole_ :: Storable a => Int -> (b -> a) -> Packing (Hole b)
+putSizedHole_ size f = packHole size $ \ptr w -> poke (castPtr ptr) (f w)
 
 -- | Put a Word16 Hole
-putHoleWord16_ :: (Word16 -> Word16) -> Packing (Hole Word16)
-putHoleWord16_ f = packHole 2 (\ptr w -> poke (castPtr ptr) (f w))
+putHoleWord16_ :: Storable a => (Word16 -> a) -> Packing (Hole Word16)
+putHoleWord16_ f = putSizedHole_ 2 f
 
 putHoleWord16, putHoleWord16BE, putHoleWord16LE :: Packing (Hole Word16)
 -- | Put a Word16 Hole in host endian
 putHoleWord16 = putHoleWord16_ id
 
 -- | Put a Word16 Hole in big endian
-putHoleWord16BE = putHoleWord16_ be16Host
+putHoleWord16BE = putHoleWord16_ toBE
 
 -- | Put a Word16 Hole in little endian
-putHoleWord16LE = putHoleWord16_ le16Host
+putHoleWord16LE = putHoleWord16_ toBE
 
 -- | Put a Word32 in the host endianess.
 --
@@ -293,25 +298,25 @@ putWord32 w = packCheckAct 4 (\ptr -> poke (castPtr ptr) w)
 
 -- | Put a Word32 serialized in little endian.
 putWord32LE :: Word32 -> Packing ()
-putWord32LE w = putWord32 (le32Host w)
+putWord32LE w = putStorable (toLE w)
 
 -- | Put a Word32 serialized in big endian.
 putWord32BE :: Word32 -> Packing ()
-putWord32BE w = putWord32 (be32Host w)
+putWord32BE w = putStorable (toBE w)
 
 -- | Put a Word32 Hole
-putHoleWord32_ :: (Word32 -> Word32) -> Packing (Hole Word32)
-putHoleWord32_ f = packHole 4 (\ptr w -> poke (castPtr ptr) (f w))
+putHoleWord32_ :: Storable a => (Word32 -> a) -> Packing (Hole Word32)
+putHoleWord32_ = putSizedHole_ 4
 
 putHoleWord32, putHoleWord32BE, putHoleWord32LE :: Packing (Hole Word32)
 -- | Put a Word32 Hole in host endian
 putHoleWord32 = putHoleWord32_ id
 
 -- | Put a Word32 Hole in big endian
-putHoleWord32BE = putHoleWord32_ be32Host
+putHoleWord32BE = putHoleWord32_ toBE
 
 -- | Put a Word32 Hole in little endian
-putHoleWord32LE = putHoleWord32_ le32Host
+putHoleWord32LE = putHoleWord32_ toLE
 
 -- | Put a Word64 in the host endianess.
 --
@@ -323,25 +328,25 @@ putWord64 w = packCheckAct 8 (\ptr -> poke (castPtr ptr) w)
 
 -- | Put a Word64 serialized in little endian.
 putWord64LE :: Word64 -> Packing ()
-putWord64LE w = putWord64 (le64Host w)
+putWord64LE w = putStorable (toLE w)
 
 -- | Put a Word64 serialized in big endian.
 putWord64BE :: Word64 -> Packing ()
-putWord64BE w = putWord64 (be64Host w)
+putWord64BE w = putStorable (toBE w)
 
 -- | Put a Word64 Hole
-putHoleWord64_ :: (Word64 -> Word64) -> Packing (Hole Word64)
-putHoleWord64_ f = packHole 8 (\ptr w -> poke (castPtr ptr) (f w))
+putHoleWord64_ :: Storable a => (Word64 -> a) -> Packing (Hole Word64)
+putHoleWord64_ = putSizedHole_ 8
 
 putHoleWord64, putHoleWord64BE, putHoleWord64LE :: Packing (Hole Word64)
 -- | Put a Word64 Hole in host endian
 putHoleWord64 = putHoleWord64_ id
 
 -- | Put a Word64 Hole in big endian
-putHoleWord64BE = putHoleWord64_ be64Host
+putHoleWord64BE = putHoleWord64_ toBE
 
 -- | Put a Word64 Hole in little endian
-putHoleWord64LE = putHoleWord64_ le64Host
+putHoleWord64LE = putHoleWord64_ toLE
 
 -- | Write a Float in little endian IEEE-754 format
 putFloat32LE :: Float -> Packing ()
@@ -360,29 +365,30 @@ putFloat64BE :: Double -> Packing ()
 putFloat64BE = putWord64BE . doubleToWord
 
 -- | Put a Bytestring.
-putBytes :: ByteString -> Packing ()
-putBytes bs =
+putBytes :: ByteArrayAccess bytes => bytes -> Packing ()
+putBytes bytes =
     packCheckAct len $ \ptr ->
-    withForeignPtr fptr $ \ptr2 ->
-    B.memcpy ptr (ptr2 `plusPtr` o) (fromIntegral len)
-  where (fptr,o,len) = B.toForeignPtr bs
+    B.withByteArray bytes $ \ptr2 ->
+    B.memCopy ptr ptr2 len
+  where
+    len = B.length bytes
 
 -- | Put an arbitrary type with the Storable class constraint.
 putStorable :: Storable a => a -> Packing ()
 putStorable a = packCheckAct (sizeOf a) (\ptr -> poke (castPtr ptr) a)
 
 -- | Unpack a bytestring using a monadic unpack action.
-runUnpacking :: Unpacking a -> ByteString -> a
-runUnpacking action bs = unsafeDoIO $ runUnpackingIO bs action
+runUnpacking :: ByteArrayAccess bytes => Unpacking a -> bytes -> a
+runUnpacking action bytes = unsafeDoIO $ runUnpackingIO bytes action
 
 -- | Similar to 'runUnpacking' but returns an Either type with an exception type in case of failure.
-tryUnpacking :: Unpacking a -> ByteString -> Either E.SomeException a
-tryUnpacking action bs = unsafeDoIO $ tryUnpackingIO bs action
+tryUnpacking :: ByteArrayAccess bytes => Unpacking a -> bytes -> Either E.SomeException a
+tryUnpacking action bytes = unsafeDoIO $ tryUnpackingIO bytes action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
-runPackingRes :: Int -> Packing a -> (a, ByteString)
+runPackingRes :: ByteArray bytes => Int -> Packing a -> (a, bytes)
 runPackingRes sz action = unsafeDoIO $ runPackingIO sz action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
-runPacking :: Int -> Packing a -> ByteString
+runPacking :: ByteArray bytes => Int -> Packing a -> bytes
 runPacking sz action = snd $ runPackingRes sz action
