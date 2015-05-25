@@ -22,6 +22,9 @@ import Control.Monad
 import Control.Exception
 import Control.Concurrent.MVar (takeMVar, newMVar)
 
+import Data.ByteArray (ByteArrayAccess(..), MemView(..))
+import qualified Data.ByteArray as B
+
 -- | Run packing on an arbitrary buffer with a size.
 --
 -- This is available, for example to run on mmap typed memory, and this is highly unsafe,
@@ -32,7 +35,7 @@ runPackingAt :: Ptr Word8   -- ^ Pointer to the beginning of the memory
              -> IO (a, Int) -- ^ Number of bytes filled
 runPackingAt ptr sz action = do
     mvar <- newMVar 0
-    (a, (Memory _ leftSz)) <- (runPacking_ action) (ptr,mvar) (Memory ptr sz)
+    (a, (MemView _ leftSz)) <- (runPacking_ action) (ptr,mvar) (MemView ptr sz)
     --(PackSt _ holes (Memory _ leftSz)) <- execStateT (runPacking_ action) (PackSt ptr 0 $ Memory ptr sz)
     holes <- takeMVar mvar
     when (holes > 0) (throwIO $ HoleInPacking holes)
@@ -42,12 +45,13 @@ runPackingAt ptr sz action = do
 --
 -- This is available, for example to run on mmap typed memory, and this is highly unsafe,
 -- as the user need to make sure the pointer and size passed to this function are correct.
-runUnpackingAt :: ForeignPtr Word8 -- ^ The initial block of memory
+runUnpackingAt :: ByteArrayAccess bytes
+               => bytes            -- ^ The initial block of memory
                -> Int              -- ^ Starting offset in the block of memory
                -> Int              -- ^ Size
                -> Unpacking a      -- ^ Unpacking action
                -> IO a
-runUnpackingAt fptr offset sz action =
-    withForeignPtr fptr $ \ptr ->
-      let m = Memory (ptr `plusPtr` offset) sz
-       in fmap fst ((runUnpacking_ action) (fptr,m) m)
+runUnpackingAt bytes offset sz action =
+    B.withByteArray bytes $ \ptr ->
+      let m = MemView (ptr `plusPtr` offset) sz
+       in fmap fst ((runUnpacking_ action) m m)

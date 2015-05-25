@@ -200,13 +200,19 @@ test_property_hole dbytes =
 assertException msg filterE act =
     handleJust filterE (\_ -> return ()) (evaluate act >> assertFailure (msg ++ " didn't raise the proper exception"))
 
+bsRunPacking :: Int -> Packing a -> B.ByteString
+bsRunPacking = runPacking
+
+getByteString :: Int -> Unpacking B.ByteString
+getByteString = getBytes
+
 main :: IO ()
 main = defaultMain $ testGroup "packer"
     [ testGroup "serialization"
         [ testGroup "basic cases"
             [ testCase "packing 4 bytes" (runPacking 4 (mapM_ putWord8 [1,2,3,4]) @=? B.pack [1,2,3,4])
             , testCase "packing out of bounds" (assertException "packing" (\(OutOfBoundPacking _ _) -> Just ())
-                                                    (runPacking 1 (mapM_ putWord8 [1,2])))
+                                                    (bsRunPacking 1 (mapM_ putWord8 [1,2])))
             , testCase "unpacking out of bounds" (assertException "unpacking" (\(OutOfBoundUnpacking _ _) -> Just ())
                                                     (runUnpacking (mapM_ (\_ -> getWord8 >> return ()) [1,2]) (B.singleton 1)))
             , testCase "unpacking set pos before" (assertException "unpacking position" (\(OutOfBoundUnpacking _ _) -> Just ())
@@ -217,10 +223,10 @@ main = defaultMain $ testGroup "packer"
             , testCase "unpacking isolate" (runUnpacking (isolate 2 (getBytes 2) >>= \i -> getWord8 >>= \r -> return (i,r)) (B.pack [1,2,3]) @=? (B.pack [1,2], 3))
             , testCase "unpacking isolate out of bounds" $
                 assertException "unpacking isolate" (\(OutOfBoundUnpacking _ _) -> Just ())
-                    (runUnpacking (isolate 2 (getBytes 3)) (B.pack [1,2,3]))
+                    (runUnpacking (isolate 2 (getByteString 3)) (B.pack [1,2,3]))
             , testCase "unpacking isolate not consumed" $
                 assertException "unpacking isolate" (\(IsolationNotFullyConsumed _ _) -> Just ())
-                    (runUnpacking (isolate 3 (getBytes 2)) (B.pack [1,2,3]))
+                    (runUnpacking (isolate 3 (getByteString 2)) (B.pack [1,2,3]))
             ]
         , testGroup "endianness cases" $ concatMap toEndianCase endiannessCases
         , testProperty "unpacking.packing=id" (\ds -> unpackDataStream ds (packDataStream ds) == ds)

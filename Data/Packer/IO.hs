@@ -13,25 +13,33 @@ module Data.Packer.IO
 
 import Data.Packer.Internal
 import Data.Packer.Unsafe
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Internal as B (ByteString(..), mallocByteString, toForeignPtr)
 import Foreign.ForeignPtr
 import qualified Control.Exception as E
 
+import Data.ByteArray (ByteArrayAccess(..), ByteArray(..), MemView(..))
+import qualified Data.ByteArray as B
+import qualified Data.Memory.PtrMethods as B
+
 -- | Unpack a bytestring using a monadic unpack action in the IO monad.
-runUnpackingIO :: ByteString -> Unpacking a -> IO a
-runUnpackingIO bs action = runUnpackingAt fptr o len action
-  where (fptr,o,len) = B.toForeignPtr bs
+runUnpackingIO :: ByteArrayAccess bytes => bytes -> Unpacking a -> IO a
+runUnpackingIO ba action = runUnpackingAt ba 0 (B.length ba) action
 
 -- | Similar to 'runUnpackingIO' but catch exception and return an Either type.
-tryUnpackingIO :: ByteString -> Unpacking a -> IO (Either E.SomeException a)
-tryUnpackingIO bs action = E.try $ runUnpackingIO bs action
+tryUnpackingIO :: ByteArrayAccess bytes => bytes -> Unpacking a -> IO (Either E.SomeException a)
+tryUnpackingIO ba action = E.try $ runUnpackingIO ba action
 
 -- | Run packing with a buffer created internally with a monadic action and return the bytestring
-runPackingIO :: Int -> Packing a -> IO (a, ByteString)
-runPackingIO sz action = createUptoN sz $ \ptr -> runPackingAt ptr sz action
-    where -- copy of bytestring createUptoN as it's only been added 2012-09
-          createUptoN l f = do fp <- B.mallocByteString l
-                               (a, l') <- withForeignPtr fp $ \p -> f p
-                               return $! (,) a $! B.PS fp 0 l'
+runPackingIO :: ByteArray bytes => Int -> Packing a -> IO (a, bytes)
+runPackingIO sz action = do
+    ((a, size), bytes) <- B.allocRet sz $ \ptr -> runPackingAt ptr sz action
+    newBytes <- trimeBytes bytes size
+    return (a, newBytes)
 
+trimeBytes :: ByteArray bytes
+           => bytes
+           -> Int
+           -> IO bytes
+trimeBytes src size =
+    B.create size $ \ptrDst ->
+    B.withByteArray src $ \ptrSrc ->
+        B.memCopy ptrDst ptrSrc size

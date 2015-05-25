@@ -15,15 +15,16 @@ Homepage:            http://github.com/vincenthz/hs-packer
 
 Library
   Build-Depends:     base >= 3 && < 5
-                   , bytestring
+                   , memory >= 0.2
                    , ghc-prim
                    , transformers
+
+                   , bytestring
   Exposed-modules:   Data.Packer
                      Data.Packer.Unsafe
                      Data.Packer.IO
   Other-modules:     Data.Packer.Internal
                      Data.Packer.IEEE754
-                     Data.Packer.Endian
 
 Test-Suite test-packer
   type:              exitcode-stdio-1.0
