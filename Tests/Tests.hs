@@ -5,6 +5,7 @@ import Test.Tasty (defaultMain, testGroup)
 
 import Test.Tasty.QuickCheck
 import Test.Tasty.HUnit
+import Test.Tasty (TestTree)
 import Control.Applicative ((<$>))
 import Control.Monad
 import Control.Exception
@@ -26,6 +27,7 @@ endiannessCases =
     , ("64BE", putWord64BE . fromIntegral, (fromIntegral <$> getWord64BE), B.pack [8,7,6,5,4,3,2,1], 0x0807060504030201)
     ]
 
+toEndianCase :: (Eq a, Show a) => (String, a -> Packing (), Unpacking a, B.ByteString, a) -> [TestTree]
 toEndianCase (n, pAct, gAct, bs, v) =
     [ testCase ("put" ++ n) (runPacking 8 (pAct v) @=? bs)
     , testCase ("get" ++ n) (runUnpacking gAct bs @=? v)
@@ -200,6 +202,36 @@ test_property_hole dbytes =
 assertException msg filterE act =
     handleJust filterE (\_ -> return ()) (evaluate act >> assertFailure (msg ++ " didn't raise the proper exception"))
 
+
+endOfInputCase :: [TestTree]
+endOfInputCase =
+    [ testCase "endOfInput False" (getEndOfInput getWord8 "as" @=? False)
+    , testCase "endOfInput True" (getEndOfInput getWord16 "as" @=? True)
+    ]
+  where
+    getEndOfInput :: Unpacking a -> B.ByteString -> Bool
+    getEndOfInput getter bs =
+        let inner = do
+                _ <- getter
+                endOfInput
+        in runUnpacking inner bs
+
+
+countRemainingCase :: [TestTree]
+countRemainingCase =
+    [ testCase "countRemaining 3" (getRemainingCount getWord8 "abcd" @=? 3)
+    , testCase "countRemaining 2" (getRemainingCount getWord16 "abcd" @=? 2)
+    , testCase "countRemaining 0" (getRemainingCount getWord32 "abcd" @=? 0)
+    ]
+  where
+    getRemainingCount :: Unpacking a -> B.ByteString -> Int
+    getRemainingCount getter bs =
+        let inner = do
+                _ <- getter
+                countRemaining
+        in runUnpacking inner bs
+
+
 main :: IO ()
 main = defaultMain $ testGroup "packer"
     [ testGroup "serialization"
@@ -221,7 +253,10 @@ main = defaultMain $ testGroup "packer"
             , testCase "unpacking isolate not consumed" $
                 assertException "unpacking isolate" (\(IsolationNotFullyConsumed _ _) -> Just ())
                     (runUnpacking (isolate 3 (getBytes 2)) (B.pack [1,2,3]))
+
             ]
+        , testGroup "endOfInput" endOfInputCase
+        , testGroup "countRemaining" countRemainingCase
         , testGroup "endianness cases" $ concatMap toEndianCase endiannessCases
         , testProperty "unpacking.packing=id" (\ds -> unpackDataStream ds (packDataStream ds) == ds)
         , testProperty "holes" test_property_hole
