@@ -50,6 +50,8 @@ module Data.Packer
     , getFloat64LE
     , getFloat64BE
     , isolate
+    , endOfInput
+    , countRemaining
     -- * Packing functions
     , packGetPosition
     , putWord8
@@ -244,6 +246,18 @@ getStorable = get_ undefined
 -- this function will raises an exception
 isolate :: Int -> Unpacking a -> Unpacking a
 isolate n subUnpacker = unpackIsolate n subUnpacker
+
+-- | Return True if there are no more bytes to be unpacked.
+--
+-- No input is consumed.
+endOfInput :: Unpacking Bool
+endOfInput = (== 0) <$> unpackGetNbRemaining
+
+-- | Return the number of bytes remaining in the current Unpacking.
+--
+-- No input is consumed.
+countRemaining :: Unpacking Int
+countRemaining = unpackGetNbRemaining
 
 -- | Put a Word8
 putWord8 :: Word8 -> Packing ()
