@@ -24,8 +24,9 @@ module Data.Packer.IEEE754 (
     , floatToWord
 ) where
 
-import Control.Monad.ST (runST, ST)
+#if ! MIN_VERSION_base (4,11,0)
 import Data.Word (Word32, Word64)
+#endif
 
 import GHC.Prim
 import GHC.Float

@@ -83,9 +83,7 @@ module Data.Packer
     , fillHole
     ) where
 
-import Control.Applicative
 import Data.Packer.Internal
-import Data.Packer.Unsafe
 import Data.Packer.IO
 import Data.Packer.Endian
 import Data.Packer.IEEE754
@@ -93,12 +91,13 @@ import Foreign.Ptr
 import Foreign.ForeignPtr
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Internal as B (memcpy, unsafeCreate, toForeignPtr, fromForeignPtr)
+import qualified Data.ByteString.Internal as B (memcpy, toForeignPtr, fromForeignPtr)
 import Data.Word
 import Foreign.Storable
 import System.IO.Unsafe
 import qualified Control.Exception as E
 
+unsafeDoIO :: IO a -> a
 #if __GLASGOW_HASKELL__ > 704
 unsafeDoIO = unsafeDupablePerformIO
 #else

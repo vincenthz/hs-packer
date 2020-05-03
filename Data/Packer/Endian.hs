@@ -19,7 +19,6 @@ module Data.Packer.Endian
     , be64Host
     ) where
 
-import Data.Bits
 import Data.Word
 
 #if MIN_VERSION_base(4,7,0)

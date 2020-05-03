@@ -43,7 +43,7 @@ import Data.Data
 import Data.Word
 import Control.Exception (Exception, throwIO, try, SomeException)
 import Control.Monad.IO.Class
-import Control.Applicative (Alternative(..), Applicative(..), (<$>), (<*>))
+import Control.Applicative (Alternative(..))
 import Control.Concurrent.MVar
 import Control.Monad (when)
 
@@ -158,7 +158,7 @@ instance Exception IsolationNotFullyConsumed
 unpackUnsafeActRef :: Int -- ^ number of bytes
                    -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
                    -> Unpacking a
-unpackUnsafeActRef n act = Unpacking $ \(fptr, iniBlock) st@(Memory ptr sz) -> do
+unpackUnsafeActRef n act = Unpacking $ \(fptr, _iniBlock) (Memory ptr sz) -> do
     r <- act fptr ptr
     return (r, Memory (ptr `plusPtr` n) (sz - n))
 
@@ -166,7 +166,7 @@ unpackUnsafeActRef n act = Unpacking $ \(fptr, iniBlock) st@(Memory ptr sz) -> d
 unpackCheckActRef :: Int
                   -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
                   -> Unpacking a
-unpackCheckActRef n act = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memory ptr sz) -> do
+unpackCheckActRef n act = Unpacking $ \(fptr, (Memory iniPtr _)) (Memory ptr sz) -> do
     when (sz < n) (throwIO $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
     r <- act fptr ptr
     return (r, Memory (ptr `plusPtr` n) (sz - n))
@@ -196,7 +196,7 @@ unpackCheckAct n act = unpackCheckActRef n (\_ -> act)
 -- | Set the new position from the beginning in the memory block.
 -- This is useful to skip bytes or when using absolute offsets from a header or some such.
 unpackSetPosition :: Int -> Unpacking ()
-unpackSetPosition pos = Unpacking $ \(fptr, iniBlock@(Memory iniPtr sz)) _ -> do
+unpackSetPosition pos = Unpacking $ \(_fptr, (Memory iniPtr sz)) _ -> do
     when (pos < 0 || pos > sz) (throwIO $ OutOfBoundUnpacking pos 0)
     return ((), Memory (iniPtr `plusPtr` pos) (sz-pos))
 

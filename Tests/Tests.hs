@@ -1,12 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ViewPatterns #-}
 
 import Test.Tasty (defaultMain, testGroup)
 
 import Test.Tasty.QuickCheck
 import Test.Tasty.HUnit
 import Test.Tasty (TestTree)
-import Control.Applicative ((<$>))
 import Control.Monad
 import Control.Exception
 
@@ -53,6 +51,7 @@ data DataAtom = W8    Word8
 newtype DataStream = DataStream [DataAtom]
     deriving (Show,Eq)
 
+arbitraryBS :: Gen B.ByteString
 arbitraryBS =
         choose (0,257)
     >>= \sz -> replicateM sz (fromIntegral <$> (choose (0,255) :: Gen Int))
@@ -138,7 +137,7 @@ test_property_hole_pack_unpack a =
     r2 = runParser p2
 
     runPacker :: DataAtom -> B.ByteString
-    runPacker a = runPacking (getAtomLength a) (packer a)
+    runPacker b = runPacking (getAtomLength a) (packer b)
     runParser :: B.ByteString -> DataAtom
     runParser = runUnpacking (getAtom a)
 
@@ -164,6 +163,7 @@ instance Arbitrary DataStream where
             >>= \sz -> replicateM sz arbitrary
             >>= return . DataStream
 
+packDataStream :: DataStream -> B.ByteString
 packDataStream (DataStream atoms) = runPacking (foldl sumLen 0 atoms) (mapM_ putAtom atoms)
     where sumLen a at = a + getAtomLength at
 
@@ -199,6 +199,7 @@ test_property_hole dbytes =
         size <- fromIntegral <$> getWord32LE
         DataBytes <$> getBytes size
 
+assertException :: Exception e => String -> (e -> Maybe b) -> a -> IO ()
 assertException msg filterE act =
     handleJust filterE (\_ -> return ()) (evaluate act >> assertFailure (msg ++ " didn't raise the proper exception"))
 
@@ -238,9 +239,9 @@ main = defaultMain $ testGroup "packer"
         [ testGroup "basic cases"
             [ testCase "packing 4 bytes" (runPacking 4 (mapM_ putWord8 [1,2,3,4]) @=? B.pack [1,2,3,4])
             , testCase "packing out of bounds" (assertException "packing" (\(OutOfBoundPacking _ _) -> Just ())
-                                                    (runPacking 1 (mapM_ putWord8 [1,2])))
+                                                    (runPacking (1 :: Int) (mapM_ putWord8 [1,2])))
             , testCase "unpacking out of bounds" (assertException "unpacking" (\(OutOfBoundUnpacking _ _) -> Just ())
-                                                    (runUnpacking (mapM_ (\_ -> getWord8 >> return ()) [1,2]) (B.singleton 1)))
+                                                    (runUnpacking (mapM_ (\_ -> getWord8 >> return ()) [1 :: Int,2]) (B.singleton 1)))
             , testCase "unpacking set pos before" (assertException "unpacking position" (\(OutOfBoundUnpacking _ _) -> Just ())
                                                     (runUnpacking (unpackSetPosition 2) (B.singleton 1)))
             , testCase "unpacking set pos after" (assertException "unpacking position" (\(OutOfBoundUnpacking _ _) -> Just ())
