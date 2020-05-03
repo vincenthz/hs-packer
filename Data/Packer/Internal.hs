@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- |
@@ -46,6 +47,12 @@ import Control.Monad.IO.Class
 import Control.Applicative (Alternative(..))
 import Control.Concurrent.MVar
 import Control.Monad (when)
+#if ! MIN_VERSION_base(4,11,0)
+import           Control.Monad.Fail (MonadFail)
+#endif
+#if MIN_VERSION_base(4,9,0)
+import qualified Control.Monad.Fail as Fail
+#endif
 
 -- | Represent a memory block with a ptr as beginning
 data Memory = Memory {-# UNPACK #-} !(Ptr Word8)
@@ -92,6 +99,15 @@ newtype Unpacking a = Unpacking { runUnpacking_ :: (ForeignPtr Word8, Memory) ->
 instance Monad Unpacking where
     return = returnUnpacking
     (>>=)  = bindUnpacking
+#if !MIN_VERSION_base(4,11,0)
+    -- Monad (fail) was removed in GHC 8.8.1
+    fail = Fail.fail
+#endif
+
+#if MIN_VERSION_base(4,9,0)
+instance MonadFail Unpacking where
+ fail = Fail.fail
+#endif
 
 instance MonadIO Unpacking where
     liftIO f = Unpacking $ \_ st -> f >>= \a -> return (a,st)
