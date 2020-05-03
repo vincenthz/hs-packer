@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- |
@@ -43,9 +44,15 @@ import Data.Data
 import Data.Word
 import Control.Exception (Exception, throwIO, try, SomeException)
 import Control.Monad.IO.Class
-import Control.Applicative (Alternative(..), Applicative(..), (<$>), (<*>))
+import Control.Applicative (Alternative(..))
 import Control.Concurrent.MVar
 import Control.Monad (when)
+#if ! MIN_VERSION_base(4,11,0)
+import           Control.Monad.Fail (MonadFail)
+#endif
+#if MIN_VERSION_base(4,9,0)
+import qualified Control.Monad.Fail as Fail
+#endif
 
 -- | Represent a memory block with a ptr as beginning
 data Memory = Memory {-# UNPACK #-} !(Ptr Word8)
@@ -92,6 +99,15 @@ newtype Unpacking a = Unpacking { runUnpacking_ :: (ForeignPtr Word8, Memory) ->
 instance Monad Unpacking where
     return = returnUnpacking
     (>>=)  = bindUnpacking
+#if !MIN_VERSION_base(4,11,0)
+    -- Monad (fail) was removed in GHC 8.8.1
+    fail = Fail.fail
+#endif
+
+#if MIN_VERSION_base(4,9,0)
+instance MonadFail Unpacking where
+ fail = Fail.fail
+#endif
 
 instance MonadIO Unpacking where
     liftIO f = Unpacking $ \_ st -> f >>= \a -> return (a,st)
@@ -158,7 +174,7 @@ instance Exception IsolationNotFullyConsumed
 unpackUnsafeActRef :: Int -- ^ number of bytes
                    -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
                    -> Unpacking a
-unpackUnsafeActRef n act = Unpacking $ \(fptr, iniBlock) st@(Memory ptr sz) -> do
+unpackUnsafeActRef n act = Unpacking $ \(fptr, _iniBlock) (Memory ptr sz) -> do
     r <- act fptr ptr
     return (r, Memory (ptr `plusPtr` n) (sz - n))
 
@@ -166,7 +182,7 @@ unpackUnsafeActRef n act = Unpacking $ \(fptr, iniBlock) st@(Memory ptr sz) -> d
 unpackCheckActRef :: Int
                   -> (ForeignPtr Word8 -> Ptr Word8 -> IO a)
                   -> Unpacking a
-unpackCheckActRef n act = Unpacking $ \(fptr, iniBlock@(Memory iniPtr _)) (Memory ptr sz) -> do
+unpackCheckActRef n act = Unpacking $ \(fptr, (Memory iniPtr _)) (Memory ptr sz) -> do
     when (sz < n) (throwIO $ OutOfBoundUnpacking (ptr `minusPtr` iniPtr) n)
     r <- act fptr ptr
     return (r, Memory (ptr `plusPtr` n) (sz - n))
@@ -196,7 +212,7 @@ unpackCheckAct n act = unpackCheckActRef n (\_ -> act)
 -- | Set the new position from the beginning in the memory block.
 -- This is useful to skip bytes or when using absolute offsets from a header or some such.
 unpackSetPosition :: Int -> Unpacking ()
-unpackSetPosition pos = Unpacking $ \(fptr, iniBlock@(Memory iniPtr sz)) _ -> do
+unpackSetPosition pos = Unpacking $ \(_fptr, (Memory iniPtr sz)) _ -> do
     when (pos < 0 || pos > sz) (throwIO $ OutOfBoundUnpacking pos 0)
     return ((), Memory (iniPtr `plusPtr` pos) (sz-pos))
 

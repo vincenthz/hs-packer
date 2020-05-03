@@ -14,6 +14,7 @@ Cabal-Version:       >=1.8
 Homepage:            http://github.com/vincenthz/hs-packer
 
 Library
+  ghc-options:       -Wall
   Build-Depends:     base >= 3 && < 5
                    , bytestring
                    , ghc-prim
@@ -26,6 +27,7 @@ Library
                      Data.Packer.Endian
 
 Test-Suite test-packer
+  ghc-options:       -Wall
   type:              exitcode-stdio-1.0
   hs-source-dirs:    Tests
   Main-Is:           Tests.hs
